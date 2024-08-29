@@ -112,7 +112,7 @@ static const uint8_t user_app_key[16]     = USER_LORAWAN_APP_KEY;
  * @brief Periodical uplink alarm delay in seconds
  */
 #ifndef PERIODICAL_UPLINK_DELAY_S
-#define PERIODICAL_UPLINK_DELAY_S 60
+#define PERIODICAL_UPLINK_DELAY_S 300
 #endif
 
 #ifndef DELAY_FIRST_MSG_AFTER_JOIN
@@ -273,6 +273,31 @@ void button_pressed(const struct device *dev, struct gpio_callback *cb,
 	printk("%s", __FUNCTION__);
 	user_button_callback(dev);
 }
+
+static void maybe_switch_to_class_C(uint8_t stack_id)
+{
+    smtc_modem_class_t modem_class = SMTC_MODEM_CLASS_A;
+
+    smtc_modem_get_class( stack_id, &modem_class );
+    SMTC_HAL_TRACE_INFO( "Modem class is %d\n", modem_class );
+
+    if (modem_class == SMTC_MODEM_CLASS_A) {
+
+        int set_class_rc = -1;
+
+        SMTC_HAL_TRACE_INFO("Trying to switch to class C\n");
+        set_class_rc = smtc_modem_set_class( STACK_ID, SMTC_MODEM_CLASS_C );
+
+        if (set_class_rc == 0) {
+            SMTC_HAL_TRACE_INFO("Switched to class C\n");
+            smtc_modem_get_class( STACK_ID, &modem_class );
+            SMTC_HAL_TRACE_INFO( "Modem class is now %d\n", modem_class );
+        } else {
+            SMTC_HAL_TRACE_INFO("Failed to switch to class C: %d\n", set_class_rc);
+        }
+
+    }
+}
 /**
  * @brief Example to send a user payload on an external event
  *
@@ -315,6 +340,9 @@ int main(void)
 
             smtc_modem_status_mask_t status_mask = 0;
             smtc_modem_get_status( STACK_ID, &status_mask );
+
+            // Hack(ish): needed to ensure Class A devices can be auto switched to Class C
+            maybe_switch_to_class_C(STACK_ID);
 
             // Check if the device has already joined a network
             if ((status_mask & SMTC_MODEM_STATUS_JOINED) == SMTC_MODEM_STATUS_JOINED) {
@@ -415,6 +443,10 @@ static void modem_event_callback( void )
         case SMTC_MODEM_EVENT_JOINED:
             SMTC_HAL_TRACE_INFO( "Event received: JOINED\n" );
             SMTC_HAL_TRACE_INFO( "Modem is now joined \n" );
+
+            // Hack(ish): needed to ensure Class A devices with the capabilities enabled
+            // can be auto switched to Class C
+            maybe_switch_to_class_C(stack_id);
 
             // Send first periodical uplink on port 101
             send_uplink_counter_on_port( 101 );
