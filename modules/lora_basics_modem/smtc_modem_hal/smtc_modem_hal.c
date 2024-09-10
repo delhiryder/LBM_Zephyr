@@ -255,6 +255,7 @@ const struct flash_area *context_flash_area;
 #define ADDR_SECURE_ELEMENT_CONTEXT_OFFSET 768
 #define ADDR_CRASHLOG_CONTEXT_OFFSET 4096
 #define ADDR_STORE_AND_FORWARD_CONTEXT_OFFSET 8192
+#define ADDR_FUOTA_CONTEXT_OFFSET 12288
 
 static void flash_init(void)
 {
@@ -279,9 +280,8 @@ static uint32_t priv_hal_context_address(const modem_context_type_t ctx_type, ui
 	case CONTEXT_LORAWAN_STACK:
 		return ADDR_LORAWAN_CONTEXT_OFFSET + offset;
 	case CONTEXT_FUOTA:
-		// no fuota example on stm32l0
-		return 0;
-	case CONTEXT_STORE_AND_FORWARD:
+		return ADDR_FUOTA_CONTEXT_OFFSET + offset;
+    case CONTEXT_STORE_AND_FORWARD:
 		return ADDR_STORE_AND_FORWARD_CONTEXT_OFFSET + offset;
 	case CONTEXT_SECURE_ELEMENT:
 		return ADDR_SECURE_ELEMENT_CONTEXT_OFFSET + offset;
@@ -324,7 +324,7 @@ void smtc_modem_hal_context_store(const modem_context_type_t ctx_type, uint32_t 
 		flash_area_erase(context_flash_area, 0, 4096);
 		rc = flash_area_write(context_flash_area, 0, page_buffer, 4096);
 	} else {
-		// LOG_INF("%s: offset %d, real_offset=%d", __FUNCTION__, offset, real_offset);
+		LOG_INF("%s: offset %d, real_offset=%d", __FUNCTION__, offset, real_offset);
 		rc = flash_area_write(context_flash_area, real_offset, buffer, size);
 	}
 
