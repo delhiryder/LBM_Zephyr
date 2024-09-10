@@ -145,6 +145,8 @@ void hw_modem_process_cmd( void )
     cmd_input_t          input;
     cmd_serial_rc_code_t rc_code;
 
+    LOG_INF("modem_received_buff[0]: %x", modem_received_buff[0]);
+
     // check if not false detection (0xFF is default filled buff value)
     if( modem_received_buff[0] < 0xFF )
     {
@@ -157,6 +159,10 @@ void hw_modem_process_cmd( void )
         uint8_t calculated_crc = crc;
         uint8_t cmd_crc        = modem_received_buff[cmd_length + 2];
         uint8_t cmd_id         = modem_received_buff[0];
+
+        LOG_INF("modem_received_buff[0..3] %x, %x, %x, %x", modem_received_buff[0], modem_received_buff[1], modem_received_buff[2], modem_received_buff[3]);
+        
+        LOG_INF("cmd_id: %x, cmd_len: %x, cmd_crc: %x, calculated_crc: %x", cmd_id, cmd_length, cmd_crc, calculated_crc);
 
         if( calculated_crc != cmd_crc )
         {

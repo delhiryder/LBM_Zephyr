@@ -67,6 +67,9 @@ void hw_modem_uart_dma_start_rx(uint8_t *buff, uint16_t size)
 	prv_buff = buff;
 	prv_size = size;
 
+	LOG_INF("prv_i: %d", prv_i);
+	LOG_INF("prv_buff[0]: %x", prv_buff[0]);
+
 	/* configure interrupt and callback to receive data */
 	ret = uart_irq_callback_user_data_set(prv_uart_dev,
 		prv_uart_irq_rx_callback_handler, NULL);
@@ -82,6 +85,11 @@ void hw_modem_uart_dma_stop_rx(void)
 {
 	uart_irq_rx_disable(prv_uart_dev);
 	LOG_WRN("UART RX stopped");
+
+	LOG_INF("prv_i: %d", prv_i);
+	for (int i=0; i<prv_i; i++) {
+		LOG_INF("prv_buff[%d]: %x", i, prv_buff[i]);
+	}
 }
 
 /**
