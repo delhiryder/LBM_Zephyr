@@ -59,7 +59,7 @@ LOG_MODULE_REGISTER(hw_modem, 3);
 /**
  * @brief Watchdog counter reload value during sleep (The period must be lower than MCU watchdog period (here 32s))
  */
-#define WATCHDOG_RELOAD_PERIOD_MS 20000
+#define WATCHDOG_RELOAD_PERIOD_MS 1000
 /*
  * -----------------------------------------------------------------------------
  * --- PRIVATE TYPES -----------------------------------------------------------

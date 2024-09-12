@@ -104,11 +104,11 @@ void hw_modem_init( void )
     // init LEDs
     hal_gpio_init_out( SMTC_LED_SCAN, 0);
 
-    // init irq on COMMAND pin
-    wakeup_line_irq.pin      = HW_MODEM_COMMAND_PIN;
-    wakeup_line_irq.context  = NULL;
-    wakeup_line_irq.callback = wakeup_line_irq_handler;
-    hal_gpio_init_in( HW_MODEM_COMMAND_PIN, BSP_GPIO_PULL_MODE_UP, BSP_GPIO_IRQ_MODE_RISING_FALLING, &wakeup_line_irq );
+    // // init irq on COMMAND pin
+    // wakeup_line_irq.pin      = HW_MODEM_COMMAND_PIN;
+    // wakeup_line_irq.context  = NULL;
+    // wakeup_line_irq.callback = wakeup_line_irq_handler;
+    // hal_gpio_init_in( HW_MODEM_COMMAND_PIN, BSP_GPIO_PULL_MODE_UP, BSP_GPIO_IRQ_MODE_RISING_FALLING, &wakeup_line_irq );
 
     memset( modem_response_buff, 0, HW_MODEM_RX_BUFF_MAX_LENGTH );
     hw_cmd_available             = false;
@@ -116,6 +116,8 @@ void hw_modem_init( void )
 
     // init the soft modem
     smtc_modem_init( &hw_modem_event_handler );
+
+    hw_modem_async_uart_init(modem_received_buff, HW_MODEM_RX_BUFF_MAX_LENGTH, &hw_cmd_available);
 
 #if defined( PERF_TEST_ENABLED )
     LOG_WRN( "HARDWARE MODEM RUNNING PERF TEST MODE" );
