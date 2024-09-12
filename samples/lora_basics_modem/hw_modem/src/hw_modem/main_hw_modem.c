@@ -59,7 +59,7 @@ LOG_MODULE_REGISTER(hw_modem, 3);
 /**
  * @brief Watchdog counter reload value during sleep (The period must be lower than MCU watchdog period (here 32s))
  */
-#define WATCHDOG_RELOAD_PERIOD_MS 20000
+#define WATCHDOG_RELOAD_PERIOD_MS 1000
 /*
  * -----------------------------------------------------------------------------
  * --- PRIVATE TYPES -----------------------------------------------------------
@@ -107,6 +107,8 @@ void main_hw_modem( void )
         // Check if a command is available
         if( hw_modem_is_a_cmd_available( ) == true )
         {
+            LOG_INF("about to call hw_process_cmd");
+
             // Command may generate work for the stack, so drop down to smtc_modem_run_engine().
             hw_modem_process_cmd( );
         }

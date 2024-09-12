@@ -104,11 +104,11 @@ void hw_modem_init( void )
     // init LEDs
     hal_gpio_init_out( SMTC_LED_SCAN, 0);
 
-    // init irq on COMMAND pin
-    wakeup_line_irq.pin      = HW_MODEM_COMMAND_PIN;
-    wakeup_line_irq.context  = NULL;
-    wakeup_line_irq.callback = wakeup_line_irq_handler;
-    hal_gpio_init_in( HW_MODEM_COMMAND_PIN, BSP_GPIO_PULL_MODE_UP, BSP_GPIO_IRQ_MODE_RISING_FALLING, &wakeup_line_irq );
+    // // init irq on COMMAND pin
+    // wakeup_line_irq.pin      = HW_MODEM_COMMAND_PIN;
+    // wakeup_line_irq.context  = NULL;
+    // wakeup_line_irq.callback = wakeup_line_irq_handler;
+    // hal_gpio_init_in( HW_MODEM_COMMAND_PIN, BSP_GPIO_PULL_MODE_UP, BSP_GPIO_IRQ_MODE_RISING_FALLING, &wakeup_line_irq );
 
     memset( modem_response_buff, 0, HW_MODEM_RX_BUFF_MAX_LENGTH );
     hw_cmd_available             = false;
@@ -116,6 +116,8 @@ void hw_modem_init( void )
 
     // init the soft modem
     smtc_modem_init( &hw_modem_event_handler );
+
+    hw_modem_async_uart_init(modem_received_buff, HW_MODEM_RX_BUFF_MAX_LENGTH, &hw_cmd_available);
 
 #if defined( PERF_TEST_ENABLED )
     LOG_WRN( "HARDWARE MODEM RUNNING PERF TEST MODE" );
@@ -145,6 +147,8 @@ void hw_modem_process_cmd( void )
     cmd_input_t          input;
     cmd_serial_rc_code_t rc_code;
 
+    LOG_INF("modem_received_buff[0]: %x", modem_received_buff[0]);
+
     // check if not false detection (0xFF is default filled buff value)
     if( modem_received_buff[0] < 0xFF )
     {
@@ -157,6 +161,10 @@ void hw_modem_process_cmd( void )
         uint8_t calculated_crc = crc;
         uint8_t cmd_crc        = modem_received_buff[cmd_length + 2];
         uint8_t cmd_id         = modem_received_buff[0];
+
+        LOG_INF("modem_received_buff[0..3] %x, %x, %x, %x", modem_received_buff[0], modem_received_buff[1], modem_received_buff[2], modem_received_buff[3]);
+        
+        LOG_INF("cmd_id: %x, cmd_len: %x, cmd_crc: %x, calculated_crc: %x", cmd_id, cmd_length, cmd_crc, calculated_crc);
 
         if( calculated_crc != cmd_crc )
         {
