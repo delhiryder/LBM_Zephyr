@@ -110,11 +110,13 @@ static K_MEM_SLAB_DEFINE(uart_slab, BUF_SIZE, 3, 4);
 
 static uint8_t *async_buf;
 
+typedef void (*rx_rdy_callback_t)(void);
+
 typedef struct {
   const struct device *uart_dev;
   uint8_t *rx_buf;
   int rx_buf_size;
-  volatile bool *modem_cmd_available;
+  rx_rdy_callback_t rx_rdy_callback;
 } uart_async_user_data_t;
 
 static void uart_callback(const struct device *dev, struct uart_event *evt,
@@ -129,9 +131,9 @@ static void uart_callback(const struct device *dev, struct uart_event *evt,
     LOG_INF("Tx sent %d bytes", evt->data.tx.len);
     break;
 
-  case UART_TX_ABORTED:
-    LOG_ERR("Tx aborted");
-    break;
+    case UART_TX_ABORTED:
+        LOG_ERR("Tx aborted");
+        break;
 
   case UART_RX_RDY: {
     LOG_INF("offset: %d, buf[0]: %x", evt->data.rx.offset, evt->data.rx.buf[0]);
@@ -139,7 +141,10 @@ static void uart_callback(const struct device *dev, struct uart_event *evt,
     memset(user_data_instance->rx_buf, 0xFF, user_data_instance->rx_buf_size);
     memcpy(user_data_instance->rx_buf, evt->data.rx.buf + evt->data.rx.offset,
            evt->data.rx.len);
-    *(user_data_instance->modem_cmd_available) = true;
+
+    if (user_data_instance->rx_rdy_callback != NULL) {
+        user_data_instance->rx_rdy_callback();
+    }
 
     LOG_INF("Received data %d bytes", evt->data.rx.len);
     break;
@@ -171,13 +176,13 @@ static void uart_callback(const struct device *dev, struct uart_event *evt,
 static uart_async_user_data_t user_data_1;
 
 void hw_modem_async_uart_init(uint8_t *buf, int buf_size,
-                              volatile bool *cmd_available) {
+                              rx_rdy_callback_t rx_rdy_callback) {
   int err;
 
   user_data_1.uart_dev = prv_uart_dev;
   user_data_1.rx_buf = buf;
   user_data_1.rx_buf_size = buf_size;
-  user_data_1.modem_cmd_available = cmd_available;
+  user_data_1.rx_rdy_callback = rx_rdy_callback;
 
   err = k_mem_slab_alloc(&uart_slab, (void **)&async_buf, K_NO_WAIT);
   __ASSERT(err == 0, "Failed to alloc slab");

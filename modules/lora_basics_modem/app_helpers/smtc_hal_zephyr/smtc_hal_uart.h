@@ -42,7 +42,7 @@ extern "C" {
 void hw_modem_uart_dma_start_rx( uint8_t* buff, uint16_t size );
 void hw_modem_uart_dma_stop_rx( void );
 void hw_modem_uart_tx( uint8_t* buff, uint8_t len );
-void hw_modem_async_uart_init( uint8_t *buf, int buf_size, volatile bool *cmd_available );
+void hw_modem_async_uart_init( uint8_t *buf, int buf_size, void (*rx_rdy_callback) (void) );
 
 #ifdef __cplusplus
 }

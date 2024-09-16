@@ -90,6 +90,8 @@ void wakeup_line_irq_handler( void* context );
  */
 void hw_modem_event_handler( void );
 
+void wakeup_line_async_handler(void);
+
 /*
  * -----------------------------------------------------------------------------
  * --- PUBLIC FUNCTIONS DEFINITION ---------------------------------------------
@@ -117,7 +119,7 @@ void hw_modem_init( void )
     // init the soft modem
     smtc_modem_init( &hw_modem_event_handler );
 
-    hw_modem_async_uart_init(modem_received_buff, HW_MODEM_RX_BUFF_MAX_LENGTH, &hw_cmd_available);
+    hw_modem_async_uart_init(modem_received_buff, HW_MODEM_RX_BUFF_MAX_LENGTH, &wakeup_line_async_handler);
 
 #if defined( PERF_TEST_ENABLED )
     LOG_WRN( "HARDWARE MODEM RUNNING PERF TEST MODE" );
@@ -283,6 +285,17 @@ void wakeup_line_irq_handler( void* context )
         lp_mode = HW_MODEM_LP_DISABLE_ONCE;
         // smtc_modem_hal_wake_up();
     }
+}
+
+void wakeup_line_async_handler(void) {
+    // inform that a command has arrived
+    hw_cmd_available = true;
+
+    // wake up thread to process the command
+    smtc_modem_hal_wake_up();
+
+    // force one more loop in main loop and then re-enable low power feature
+    lp_mode = HW_MODEM_LP_DISABLE_ONCE;
 }
 
 void hw_modem_event_handler( void )
