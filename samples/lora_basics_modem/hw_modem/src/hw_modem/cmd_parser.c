@@ -250,6 +250,8 @@ static const uint8_t host_cmd_tab[CMD_MAX][HOST_CMD_TAB_IDX_COUNT] = {
 #endif  // ADD_RELAY_TX_CMD
     [CMD_GET_BYPASS_JOIN_DUTY_CYCLE_BACKOFF]    = { 1, 0, 0 },
     [CMD_SET_BYPASS_JOIN_DUTY_CYCLE_BACKOFF]    = { 1, 1, 1 },
+
+    [CMD_GET_FUOTA_METADATA]                    = { 1, 0, 0 }
 };
 
 /**
@@ -612,6 +614,34 @@ uint32_t cmd_parser_crc( const uint8_t* buf, int len );
 void cmd_parser_set_transceiver_context(void *context) {
     transceiver_context = context;
 }
+
+typedef struct frag_group_data_copy_s
+{
+    bool is_active;
+    struct
+    {
+        uint8_t mc_group_bit_mask;
+        uint8_t frag_index;
+    } frag_session;
+    uint16_t frag_nb;
+    uint8_t  frag_size;
+    struct
+    {
+        uint8_t block_ack_delay;
+        uint8_t frag_algo;
+    } control;
+    uint8_t  padding;
+    uint32_t descriptor;
+} frag_group_data_copy_t;
+
+typedef struct sFragDecoderStatus_copy
+{
+    uint16_t FragNbRx;
+    uint16_t FragNbLost;
+    uint16_t FragNbLastRx;
+    uint16_t MissingFrag;
+    uint8_t  MatrixError;
+} FragDecoderStatus_copy_t;
 
 cmd_parse_status_t parse_cmd( cmd_input_t* cmd_input, cmd_response_t* cmd_output )
 {
@@ -2307,6 +2337,54 @@ cmd_parse_status_t parse_cmd( cmd_input_t* cmd_input, cmd_response_t* cmd_output
     }
 
 #endif  // ADD_APP_GEOLOCATION && STM32L476xx
+
+    case CMD_GET_FUOTA_METADATA:
+    {
+        cmd_output->return_code = CMD_RC_OK;
+
+        FragDecoderStatus_copy_t decoder_status;
+        frag_group_data_copy_t group_data;
+
+        uint8_t temp[16];
+        memset(temp, 0, 16);
+        smtc_modem_hal_context_restore(CONTEXT_FUOTA_METADATA, 0, temp, 16);
+        memcpy(&decoder_status, temp, sizeof(decoder_status));
+
+        memset(temp, 0, 16);
+        smtc_modem_hal_context_restore(CONTEXT_FUOTA_METADATA, 16, temp, 16);
+        memcpy(&group_data, temp, sizeof(group_data));
+
+        // cmd_output->buffer[0]  = last_dl_metadata.stack_id;
+        // cmd_output->buffer[1]  = last_dl_metadata.rssi;
+        // cmd_output->buffer[2]  = last_dl_metadata.snr;
+        // cmd_output->buffer[3]  = last_dl_metadata.window;
+        // cmd_output->buffer[4]  = last_dl_metadata.fport;
+        // cmd_output->buffer[5]  = last_dl_metadata.fpending_bit;
+        // cmd_output->buffer[6]  = ( last_dl_metadata.frequency_hz >> 24 ) & 0xff;
+        // cmd_output->buffer[7]  = ( last_dl_metadata.frequency_hz >> 16 ) & 0xff;
+        // cmd_output->buffer[8]  = ( last_dl_metadata.frequency_hz >> 8 ) & 0xff;
+        // cmd_output->buffer[9]  = ( last_dl_metadata.frequency_hz & 0xff );
+        // cmd_output->buffer[10] = last_dl_metadata.datarate;
+
+        SMTC_HAL_TRACE_INFO( "decoder_status FragNbRx: %d, FragNbLost: %d, FragNbLastRx: %d, MissingFrag: %d, MatrixError: %d\n",
+                decoder_status.FragNbRx,
+                decoder_status.FragNbLost,
+                decoder_status.FragNbLastRx,
+                decoder_status.MissingFrag,
+                decoder_status.MatrixError
+                );
+        SMTC_HAL_TRACE_INFO( "group_data is_active: %d, frag_nb: %d, frag_size: %d, padding: %d, descriptor: %d\n",
+                group_data.is_active,
+                group_data.frag_nb,
+                group_data.frag_size,
+                group_data.padding,
+                group_data.descriptor
+                );
+
+        cmd_output->length = 0;
+        break;
+    }
+
     default:
     {
         SMTC_HAL_TRACE_ERROR( "Unknown command (0x%x)\n", cmd_input->cmd_code );

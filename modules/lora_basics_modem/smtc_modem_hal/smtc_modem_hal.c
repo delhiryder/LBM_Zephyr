@@ -255,7 +255,8 @@ const struct flash_area *context_flash_area;
 #define ADDR_SECURE_ELEMENT_CONTEXT_OFFSET 768
 #define ADDR_CRASHLOG_CONTEXT_OFFSET 4096
 #define ADDR_STORE_AND_FORWARD_CONTEXT_OFFSET 8192
-#define ADDR_FUOTA_CONTEXT_OFFSET 12288
+#define ADDR_FUOTA_CONTEXT_OFFSET 9792
+#define ADDR_FUOTA_METADATA_CONTEXT_OFFSET 30272
 
 static void flash_init(void)
 {
@@ -285,6 +286,8 @@ static uint32_t priv_hal_context_address(const modem_context_type_t ctx_type, ui
 		return ADDR_STORE_AND_FORWARD_CONTEXT_OFFSET + offset;
 	case CONTEXT_SECURE_ELEMENT:
 		return ADDR_SECURE_ELEMENT_CONTEXT_OFFSET + offset;
+	case CONTEXT_FUOTA_METADATA:
+		return ADDR_FUOTA_METADATA_CONTEXT_OFFSET + offset;
 	}
 	k_oops();
 	CODE_UNREACHABLE;
