@@ -177,6 +177,7 @@ typedef enum host_cmd_id_e
     CMD_GET_SUSPEND_RADIO_COMMUNICATIONS   = 0x95,
     CMD_GET_BYPASS_JOIN_DUTY_CYCLE_BACKOFF = 0x96,
     CMD_SET_BYPASS_JOIN_DUTY_CYCLE_BACKOFF = 0x97,
+    CMD_GET_FUOTA_METADATA                 = 0x98, // TODO: frag_nb, frag_size, padding
     CMD_MAX
 } host_cmd_id_t;
 
