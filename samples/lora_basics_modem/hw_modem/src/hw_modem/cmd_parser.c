@@ -2342,6 +2342,13 @@ cmd_parse_status_t parse_cmd( cmd_input_t* cmd_input, cmd_response_t* cmd_output
     {
         cmd_output->return_code = CMD_RC_OK;
 
+        // fetch FUOTA frames from flash
+        uint8_t fuota_frag_buf[1028];
+        smtc_modem_hal_context_restore(CONTEXT_FUOTA, 0, fuota_frag_buf, 1028);
+
+        SMTC_MODEM_HAL_TRACE_ARRAY("FUOTA Fragments: ", fuota_frag_buf, 1028);
+
+        // fetch FUOTA metadata from flash
         FragDecoderStatus_copy_t decoder_status;
         frag_group_data_copy_t group_data;
 

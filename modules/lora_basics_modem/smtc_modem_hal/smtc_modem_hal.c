@@ -14,6 +14,7 @@
 #include <zephyr/sys/reboot.h>
 #include <zephyr/fs/nvs.h>
 #include <zephyr/storage/flash_map.h>
+#include <zephyr/device.h>
 
 #include <lora_lbm_transceiver.h>
 
@@ -255,8 +256,8 @@ const struct flash_area *context_flash_area;
 #define ADDR_SECURE_ELEMENT_CONTEXT_OFFSET 768
 #define ADDR_CRASHLOG_CONTEXT_OFFSET 4096
 #define ADDR_STORE_AND_FORWARD_CONTEXT_OFFSET 8192
-#define ADDR_FUOTA_CONTEXT_OFFSET 9792
-#define ADDR_FUOTA_METADATA_CONTEXT_OFFSET 30272
+#define ADDR_FUOTA_METADATA_CONTEXT_OFFSET 9792
+#define ADDR_FUOTA_CONTEXT_OFFSET 12288
 
 static void flash_init(void)
 {
@@ -301,7 +302,13 @@ void smtc_modem_hal_context_restore(const modem_context_type_t ctx_type, uint32_
 
 	flash_init();
 	real_offset = priv_hal_context_address(ctx_type, offset);
+
+	LOG_INF("%s: offset %d, real_offset=%d", __FUNCTION__, offset, real_offset);
+
 	rc = flash_area_read(context_flash_area, real_offset, buffer, size);
+
+	LOG_INF("read success: %d", rc);
+
 	return;
 }
 
@@ -326,11 +333,25 @@ void smtc_modem_hal_context_store(const modem_context_type_t ctx_type, uint32_t 
 		memcpy(page_buffer + real_offset, buffer, size);
 		flash_area_erase(context_flash_area, 0, 4096);
 		rc = flash_area_write(context_flash_area, 0, page_buffer, 4096);
+
+	} else if (real_offset >= ADDR_FUOTA_CONTEXT_OFFSET) { 
+		LOG_INF("doing read-erase-write for FUOTA fragment");
+
+		memset(page_buffer, 0, 4096);
+		flash_area_read(context_flash_area, ADDR_FUOTA_CONTEXT_OFFSET, page_buffer, 4096);
+
+		memset(page_buffer + offset, 0, size);
+		memcpy(page_buffer + offset, buffer, size);
+
+		flash_area_erase(context_flash_area, ADDR_FUOTA_CONTEXT_OFFSET, 4096);
+		rc = flash_area_write(context_flash_area, ADDR_FUOTA_CONTEXT_OFFSET, page_buffer, 4096);
+
 	} else {
 		LOG_INF("%s: offset %d, real_offset=%d", __FUNCTION__, offset, real_offset);
 		rc = flash_area_write(context_flash_area, real_offset, buffer, size);
 	}
 
+	LOG_INF("write success: %d", rc);
 	return;
 }
 
