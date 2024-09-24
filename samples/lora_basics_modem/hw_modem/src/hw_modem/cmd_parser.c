@@ -30,6 +30,10 @@
 
 #include "radio_utilities.h"
 
+#include <zephyr/crypto/crypto.h>
+#include <zephyr/kernel.h>
+#include <zephyr/device.h>
+
 #include <string.h>  //for memset
 #if defined( USE_RELAY_TX )
 #include "smtc_modem_relay_api.h"
@@ -642,6 +646,14 @@ typedef struct sFragDecoderStatus_copy
     uint16_t MissingFrag;
     uint8_t  MatrixError;
 } FragDecoderStatus_copy_t;
+
+#ifdef CONFIG_CRYPTO_MBEDTLS_SHIM
+#define CRYPTO_DRV_NAME CONFIG_CRYPTO_MBEDTLS_SHIM_DRV_NAME
+#elif DT_HAS_COMPAT_STATUS_OKAY(renesas_smartbond_crypto)
+#define CRYPTO_DEV_COMPAT renesas_smartbond_crypto
+#else
+#error "You need to enable one crypto device"
+#endif
 
 cmd_parse_status_t parse_cmd( cmd_input_t* cmd_input, cmd_response_t* cmd_output )
 {
@@ -2347,6 +2359,33 @@ cmd_parse_status_t parse_cmd( cmd_input_t* cmd_input, cmd_response_t* cmd_output
         smtc_modem_hal_context_restore(CONTEXT_FUOTA, 0, fuota_frag_buf, 1028);
 
         SMTC_MODEM_HAL_TRACE_ARRAY("FUOTA Fragments: ", fuota_frag_buf, 1028);
+
+        // calculate hash of fuota frames
+        struct hash_ctx ctx;
+
+        const struct device *dev = device_get_binding(CRYPTO_DRV_NAME);
+
+        if (!dev) {
+            SMTC_HAL_TRACE_INFO("Crypto device is not ready");
+        }
+
+        ctx.flags = CAP_SYNC_OPS | CAP_SEPARATE_IO_BUFS;
+
+        ret = hash_begin_session(dev, &ctx, CRYPTO_HASH_ALGO_SHA256);
+        if (ret != 0)
+            SMTC_HAL_TRACE_INFO("Failed to init sha256 session");
+
+        uint8_t hash_out_buf[32] = {0};
+        struct hash_pkt pkt = {
+			.in_buf = fuota_frag_buf,
+			.in_len = sizeof(fuota_frag_buf),
+			.out_buf = hash_out_buf
+		};
+        ret = hash_compute(&ctx, &pkt);
+
+        SMTC_HAL_TRACE_INFO("hash computed successfully: %d", ret);
+        SMTC_MODEM_HAL_TRACE_ARRAY("calculated hash: ", hash_out_buf, 32);
+
 
         // fetch FUOTA metadata from flash
         FragDecoderStatus_copy_t decoder_status;
