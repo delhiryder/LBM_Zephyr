@@ -2400,17 +2400,28 @@ cmd_parse_status_t parse_cmd( cmd_input_t* cmd_input, cmd_response_t* cmd_output
         smtc_modem_hal_context_restore(CONTEXT_FUOTA_METADATA, 16, temp, 16);
         memcpy(&group_data, temp, sizeof(group_data));
 
-        // cmd_output->buffer[0]  = last_dl_metadata.stack_id;
-        // cmd_output->buffer[1]  = last_dl_metadata.rssi;
-        // cmd_output->buffer[2]  = last_dl_metadata.snr;
-        // cmd_output->buffer[3]  = last_dl_metadata.window;
-        // cmd_output->buffer[4]  = last_dl_metadata.fport;
-        // cmd_output->buffer[5]  = last_dl_metadata.fpending_bit;
-        // cmd_output->buffer[6]  = ( last_dl_metadata.frequency_hz >> 24 ) & 0xff;
-        // cmd_output->buffer[7]  = ( last_dl_metadata.frequency_hz >> 16 ) & 0xff;
-        // cmd_output->buffer[8]  = ( last_dl_metadata.frequency_hz >> 8 ) & 0xff;
-        // cmd_output->buffer[9]  = ( last_dl_metadata.frequency_hz & 0xff );
-        // cmd_output->buffer[10] = last_dl_metadata.datarate;
+        cmd_output->buffer[0] = ( decoder_status.FragNbRx >> 8 ) & 0xff;
+        cmd_output->buffer[1] = decoder_status.FragNbRx & 0xff;
+        cmd_output->buffer[2] = ( decoder_status.FragNbLost >> 8 ) & 0xff;
+        cmd_output->buffer[3] = decoder_status.FragNbLost & 0xff;
+        cmd_output->buffer[4] = ( decoder_status.FragNbLastRx >> 8 ) & 0xff;
+        cmd_output->buffer[5] = decoder_status.FragNbLastRx & 0xff;
+        cmd_output->buffer[6] = ( decoder_status.MissingFrag >> 8 ) & 0xff;
+        cmd_output->buffer[7] = decoder_status.MissingFrag & 0xff;
+        cmd_output->buffer[8] = decoder_status.MatrixError;
+
+        cmd_output->buffer[9] = group_data.is_active;
+        cmd_output->buffer[10] = ( group_data.frag_nb >> 8) & 0xff;
+        cmd_output->buffer[11] = group_data.frag_nb & 0xff;
+        cmd_output->buffer[12] = group_data.frag_size;
+        cmd_output->buffer[13] = group_data.padding;
+
+        cmd_output->buffer[14] = ( group_data.descriptor >> 24) & 0xff;
+        cmd_output->buffer[15] = ( group_data.descriptor >> 16) & 0xff;
+        cmd_output->buffer[16] = ( group_data.descriptor >> 8) & 0xff;
+        cmd_output->buffer[17] = group_data.descriptor & 0xff;
+
+        memcpy(&cmd_output->buffer[18], hash_out_buf, 32);
 
         SMTC_HAL_TRACE_INFO( "decoder_status FragNbRx: %d, FragNbLost: %d, FragNbLastRx: %d, MissingFrag: %d, MatrixError: %d\n",
                 decoder_status.FragNbRx,
@@ -2427,7 +2438,7 @@ cmd_parse_status_t parse_cmd( cmd_input_t* cmd_input, cmd_response_t* cmd_output
                 group_data.descriptor
                 );
 
-        cmd_output->length = 0;
+        cmd_output->length = 50;
         break;
     }
 
