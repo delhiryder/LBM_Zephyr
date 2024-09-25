@@ -2354,11 +2354,18 @@ cmd_parse_status_t parse_cmd( cmd_input_t* cmd_input, cmd_response_t* cmd_output
     {
         cmd_output->return_code = CMD_RC_OK;
 
-        // fetch FUOTA frames from flash
-        uint8_t fuota_frag_buf[1028];
-        smtc_modem_hal_context_restore(CONTEXT_FUOTA, 0, fuota_frag_buf, 1028);
+        // fetch FUOTA metadata from flash
+        FragDecoderStatus_copy_t decoder_status;
+        frag_group_data_copy_t group_data;
 
-        SMTC_MODEM_HAL_TRACE_ARRAY("FUOTA Fragments: ", fuota_frag_buf, 1028);
+        uint8_t temp[16];
+        memset(temp, 0, 16);
+        smtc_modem_hal_context_restore(CONTEXT_FUOTA_METADATA, 0, temp, 16);
+        memcpy(&decoder_status, temp, sizeof(decoder_status));
+
+        memset(temp, 0, 16);
+        smtc_modem_hal_context_restore(CONTEXT_FUOTA_METADATA, 16, temp, 16);
+        memcpy(&group_data, temp, sizeof(group_data));
 
         // calculate hash of fuota frames
         struct hash_ctx ctx;
@@ -2375,42 +2382,76 @@ cmd_parse_status_t parse_cmd( cmd_input_t* cmd_input, cmd_response_t* cmd_output
         if (ret != 0)
             SMTC_HAL_TRACE_INFO("Failed to init sha256 session");
 
+        // incremental hash calculation
+        uint32_t data_size = group_data.frag_nb * group_data.frag_size - group_data.padding;
+        SMTC_HAL_TRACE_INFO("data size: %d\n", data_size);
+
+        uint8_t fuota_frag_buf[1024];
+
         uint8_t hash_out_buf[32] = {0};
         struct hash_pkt pkt = {
-			.in_buf = fuota_frag_buf,
-			.in_len = sizeof(fuota_frag_buf),
 			.out_buf = hash_out_buf
 		};
+
+        uint32_t remaining = data_size;
+        uint32_t offset = 0;
+        while (remaining > 0) {
+            uint32_t chunk_size = (remaining > 1024) ? 1024 : remaining;
+
+            smtc_modem_hal_context_restore(CONTEXT_FUOTA, offset, fuota_frag_buf, 1024);
+            SMTC_MODEM_HAL_TRACE_ARRAY("chunk:", fuota_frag_buf, 1024);
+            SMTC_MODEM_HAL_TRACE_INFO("chunk size: %d", chunk_size);
+
+            struct hash_pkt chunk_pkt = {
+              .in_buf = fuota_frag_buf,
+              .in_len = chunk_size
+            };
+            ret = hash_update(&ctx, &chunk_pkt);
+
+            if (ret != 0) {
+                SMTC_HAL_TRACE_INFO("Hash update failed: %d\n", ret);
+                hash_free_session(dev, &ctx);
+            } else {
+                SMTC_HAL_TRACE_INFO("Hash updated successfully: %d\n", ret);
+            }
+
+            remaining -= chunk_size;
+            offset += chunk_size;
+        }
+
         ret = hash_compute(&ctx, &pkt);
+        if (ret != 0) {
+            SMTC_HAL_TRACE_INFO("Hash calculation failed: %d\n", ret);
+        } else {
+            SMTC_HAL_TRACE_INFO("hash computed successfully: %d", ret);
+            SMTC_MODEM_HAL_TRACE_ARRAY("Calculated hash: ", hash_out_buf, 32);
+        }
 
-        SMTC_HAL_TRACE_INFO("hash computed successfully: %d", ret);
-        SMTC_MODEM_HAL_TRACE_ARRAY("calculated hash: ", hash_out_buf, 32);
+        hash_free_session(dev, &ctx);
 
+        // send FUOTA metadata over serial
+        cmd_output->buffer[0] = ( decoder_status.FragNbRx >> 8 ) & 0xff;
+        cmd_output->buffer[1] = decoder_status.FragNbRx & 0xff;
+        cmd_output->buffer[2] = ( decoder_status.FragNbLost >> 8 ) & 0xff;
+        cmd_output->buffer[3] = decoder_status.FragNbLost & 0xff;
+        cmd_output->buffer[4] = ( decoder_status.FragNbLastRx >> 8 ) & 0xff;
+        cmd_output->buffer[5] = decoder_status.FragNbLastRx & 0xff;
+        cmd_output->buffer[6] = ( decoder_status.MissingFrag >> 8 ) & 0xff;
+        cmd_output->buffer[7] = decoder_status.MissingFrag & 0xff;
+        cmd_output->buffer[8] = decoder_status.MatrixError;
 
-        // fetch FUOTA metadata from flash
-        FragDecoderStatus_copy_t decoder_status;
-        frag_group_data_copy_t group_data;
+        cmd_output->buffer[9] = group_data.is_active;
+        cmd_output->buffer[10] = ( group_data.frag_nb >> 8) & 0xff;
+        cmd_output->buffer[11] = group_data.frag_nb & 0xff;
+        cmd_output->buffer[12] = group_data.frag_size;
+        cmd_output->buffer[13] = group_data.padding;
 
-        uint8_t temp[16];
-        memset(temp, 0, 16);
-        smtc_modem_hal_context_restore(CONTEXT_FUOTA_METADATA, 0, temp, 16);
-        memcpy(&decoder_status, temp, sizeof(decoder_status));
+        cmd_output->buffer[14] = ( group_data.descriptor >> 24) & 0xff;
+        cmd_output->buffer[15] = ( group_data.descriptor >> 16) & 0xff;
+        cmd_output->buffer[16] = ( group_data.descriptor >> 8) & 0xff;
+        cmd_output->buffer[17] = group_data.descriptor & 0xff;
 
-        memset(temp, 0, 16);
-        smtc_modem_hal_context_restore(CONTEXT_FUOTA_METADATA, 16, temp, 16);
-        memcpy(&group_data, temp, sizeof(group_data));
-
-        // cmd_output->buffer[0]  = last_dl_metadata.stack_id;
-        // cmd_output->buffer[1]  = last_dl_metadata.rssi;
-        // cmd_output->buffer[2]  = last_dl_metadata.snr;
-        // cmd_output->buffer[3]  = last_dl_metadata.window;
-        // cmd_output->buffer[4]  = last_dl_metadata.fport;
-        // cmd_output->buffer[5]  = last_dl_metadata.fpending_bit;
-        // cmd_output->buffer[6]  = ( last_dl_metadata.frequency_hz >> 24 ) & 0xff;
-        // cmd_output->buffer[7]  = ( last_dl_metadata.frequency_hz >> 16 ) & 0xff;
-        // cmd_output->buffer[8]  = ( last_dl_metadata.frequency_hz >> 8 ) & 0xff;
-        // cmd_output->buffer[9]  = ( last_dl_metadata.frequency_hz & 0xff );
-        // cmd_output->buffer[10] = last_dl_metadata.datarate;
+        memcpy(&cmd_output->buffer[18], hash_out_buf, 32);
 
         SMTC_HAL_TRACE_INFO( "decoder_status FragNbRx: %d, FragNbLost: %d, FragNbLastRx: %d, MissingFrag: %d, MatrixError: %d\n",
                 decoder_status.FragNbRx,
@@ -2427,7 +2468,7 @@ cmd_parse_status_t parse_cmd( cmd_input_t* cmd_input, cmd_response_t* cmd_output
                 group_data.descriptor
                 );
 
-        cmd_output->length = 0;
+        cmd_output->length = 50;
         break;
     }
 

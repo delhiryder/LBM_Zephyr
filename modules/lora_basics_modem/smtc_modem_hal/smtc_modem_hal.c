@@ -256,8 +256,8 @@ const struct flash_area *context_flash_area;
 #define ADDR_SECURE_ELEMENT_CONTEXT_OFFSET 768
 #define ADDR_CRASHLOG_CONTEXT_OFFSET 4096
 #define ADDR_STORE_AND_FORWARD_CONTEXT_OFFSET 8192
-#define ADDR_FUOTA_METADATA_CONTEXT_OFFSET 9792
-#define ADDR_FUOTA_CONTEXT_OFFSET 12288
+#define ADDR_FUOTA_METADATA_CONTEXT_OFFSET 12288
+#define ADDR_FUOTA_CONTEXT_OFFSET 16384
 
 static void flash_init(void)
 {
@@ -333,6 +333,18 @@ void smtc_modem_hal_context_store(const modem_context_type_t ctx_type, uint32_t 
 		memcpy(page_buffer + real_offset, buffer, size);
 		flash_area_erase(context_flash_area, 0, 4096);
 		rc = flash_area_write(context_flash_area, 0, page_buffer, 4096);
+
+	} else if (real_offset >= ADDR_FUOTA_METADATA_CONTEXT_OFFSET && real_offset < ADDR_FUOTA_CONTEXT_OFFSET) {
+		LOG_INF("doing read-erase-write for FUOTA metadata");
+
+		memset(page_buffer, 0, 4096);
+		flash_area_read(context_flash_area, ADDR_FUOTA_METADATA_CONTEXT_OFFSET, page_buffer, 4096);
+
+		memset(page_buffer + offset, 0, size);
+		memcpy(page_buffer + offset, buffer, size);
+
+		flash_area_erase(context_flash_area, ADDR_FUOTA_METADATA_CONTEXT_OFFSET, 4096);
+		rc = flash_area_write(context_flash_area, ADDR_FUOTA_METADATA_CONTEXT_OFFSET, page_buffer, 4096);
 
 	} else if (real_offset >= ADDR_FUOTA_CONTEXT_OFFSET) { 
 		LOG_INF("doing read-erase-write for FUOTA fragment");
