@@ -2383,6 +2383,8 @@ cmd_parse_status_t parse_cmd( cmd_input_t* cmd_input, cmd_response_t* cmd_output
 		};
         ret = hash_compute(&ctx, &pkt);
 
+        hash_free_session(dev, &ctx);
+
         SMTC_HAL_TRACE_INFO("hash computed successfully: %d", ret);
         SMTC_MODEM_HAL_TRACE_ARRAY("calculated hash: ", hash_out_buf, 32);
 
