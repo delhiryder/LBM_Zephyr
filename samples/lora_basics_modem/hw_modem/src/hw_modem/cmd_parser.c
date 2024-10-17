@@ -2354,8 +2354,6 @@ cmd_parse_status_t parse_cmd( cmd_input_t* cmd_input, cmd_response_t* cmd_output
     {
         cmd_output->return_code = CMD_RC_OK;
 
-
-
         // fetch FUOTA metadata from flash
         FragDecoderStatus_copy_t decoder_status;
         frag_group_data_copy_t group_data;
@@ -2368,13 +2366,6 @@ cmd_parse_status_t parse_cmd( cmd_input_t* cmd_input, cmd_response_t* cmd_output
         memset(temp, 0, 16);
         smtc_modem_hal_context_restore(CONTEXT_FUOTA_METADATA, 16, temp, 16);
         memcpy(&group_data, temp, sizeof(group_data));
-
-        // hash calculation
-        // fetch FUOTA frames from flash
-        uint8_t fuota_frag_buf[1028];
-        smtc_modem_hal_context_restore(CONTEXT_FUOTA, 0, fuota_frag_buf, 1028);
-
-        SMTC_MODEM_HAL_TRACE_ARRAY("FUOTA Fragments: ", fuota_frag_buf, 1028);
 
         // calculate hash of fuota frames
         struct hash_ctx ctx;
@@ -2391,20 +2382,52 @@ cmd_parse_status_t parse_cmd( cmd_input_t* cmd_input, cmd_response_t* cmd_output
         if (ret != 0)
             SMTC_HAL_TRACE_INFO("Failed to init sha256 session");
 
-        SMTC_HAL_TRACE_INFO("data size: %d\n", decoder_status.FragNbRx * group_data.frag_size - group_data.padding);
+        // incremental hash calculation
+        uint32_t data_size = group_data.frag_nb * group_data.frag_size - group_data.padding;
+        SMTC_HAL_TRACE_INFO("data size: %d\n", data_size);
+
+        uint8_t fuota_frag_buf[1024];
 
         uint8_t hash_out_buf[32] = {0};
         struct hash_pkt pkt = {
-			.in_buf = fuota_frag_buf,
-			.in_len = decoder_status.FragNbRx * group_data.frag_size - group_data.padding,
 			.out_buf = hash_out_buf
 		};
+
+        uint32_t remaining = data_size;
+        uint32_t offset = 0;
+        while (remaining > 0) {
+            uint32_t chunk_size = (remaining > 1024) ? 1024 : remaining;
+
+            smtc_modem_hal_context_restore(CONTEXT_FUOTA, offset, fuota_frag_buf, 1024);
+            SMTC_MODEM_HAL_TRACE_ARRAY("chunk:", fuota_frag_buf, 1024);
+            SMTC_MODEM_HAL_TRACE_INFO("chunk size: %d", chunk_size);
+
+            struct hash_pkt chunk_pkt = {
+              .in_buf = fuota_frag_buf,
+              .in_len = chunk_size
+            };
+            ret = hash_update(&ctx, &chunk_pkt);
+
+            if (ret != 0) {
+                SMTC_HAL_TRACE_INFO("Hash update failed: %d\n", ret);
+                hash_free_session(dev, &ctx);
+            } else {
+                SMTC_HAL_TRACE_INFO("Hash updated successfully: %d\n", ret);
+            }
+
+            remaining -= chunk_size;
+            offset += chunk_size;
+        }
+
         ret = hash_compute(&ctx, &pkt);
+        if (ret != 0) {
+            SMTC_HAL_TRACE_INFO("Hash calculation failed: %d\n", ret);
+        } else {
+            SMTC_HAL_TRACE_INFO("hash computed successfully: %d", ret);
+            SMTC_MODEM_HAL_TRACE_ARRAY("Calculated hash: ", hash_out_buf, 32);
+        }
 
         hash_free_session(dev, &ctx);
-
-        SMTC_HAL_TRACE_INFO("hash computed successfully: %d", ret);
-        SMTC_MODEM_HAL_TRACE_ARRAY("calculated hash: ", hash_out_buf, 32);
 
         // send FUOTA metadata over serial
         cmd_output->buffer[0] = ( decoder_status.FragNbRx >> 8 ) & 0xff;
