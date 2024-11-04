@@ -347,19 +347,19 @@ void smtc_modem_hal_context_store(const modem_context_type_t ctx_type, uint32_t 
 		rc = flash_area_write(context_flash_area, ADDR_FUOTA_METADATA_CONTEXT_OFFSET, page_buffer, 4096);
 
 	} else if (real_offset >= ADDR_FUOTA_CONTEXT_OFFSET) { 
-		LOG_INF("doing read-erase-write for FUOTA fragment");
+		LOG_INF("doing read-erase-write in FUOTA context");
 
 		uint32_t page_size = smtc_modem_hal_flash_get_page_size();
 
 		// calculate page number we are writing to, starting from ADDR_FUOTA_CONTEXT_OFFSET
 		size_t page = (real_offset - ADDR_FUOTA_CONTEXT_OFFSET) / page_size;
-		LOG_INF("writing to FUOTA context page %d", page);
+		LOG_INF("writing to FUOTA context page %d:%d", page, offset % page_size);
 
-		// check if write will cross page boundaries
-		size_t remaining_space = (ADDR_FUOTA_CONTEXT_OFFSET + (page + 1) * page_size) - real_offset;
-		LOG_INF("remaining space in page %d: %d", page, remaining_space);
+		//size_t remaining_space = (ADDR_FUOTA_CONTEXT_OFFSET + (page + 1) * page_size) - real_offset;
+		//LOG_INF("remaining space in page %d: %d", page, remaining_space);
 		LOG_INF("real_offset: %d", real_offset);
 
+		// check if write will cross page boundaries
 		// if (remaining_space < size) {
 		// 	LOG_INF("page boundaries crossed");
 		// 	/* page cross logic */
