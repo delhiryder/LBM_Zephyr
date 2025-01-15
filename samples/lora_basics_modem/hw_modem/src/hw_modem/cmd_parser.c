@@ -30,6 +30,10 @@
 
 #include "radio_utilities.h"
 
+#include <zephyr/crypto/crypto.h>
+#include <zephyr/kernel.h>
+#include <zephyr/device.h>
+
 #include <string.h>  //for memset
 #if defined( USE_RELAY_TX )
 #include "smtc_modem_relay_api.h"
@@ -250,6 +254,8 @@ static const uint8_t host_cmd_tab[CMD_MAX][HOST_CMD_TAB_IDX_COUNT] = {
 #endif  // ADD_RELAY_TX_CMD
     [CMD_GET_BYPASS_JOIN_DUTY_CYCLE_BACKOFF]    = { 1, 0, 0 },
     [CMD_SET_BYPASS_JOIN_DUTY_CYCLE_BACKOFF]    = { 1, 1, 1 },
+
+    [CMD_GET_FUOTA_METADATA]                    = { 1, 0, 0 }
 };
 
 /**
@@ -612,6 +618,42 @@ uint32_t cmd_parser_crc( const uint8_t* buf, int len );
 void cmd_parser_set_transceiver_context(void *context) {
     transceiver_context = context;
 }
+
+typedef struct frag_group_data_copy_s
+{
+    bool is_active;
+    struct
+    {
+        uint8_t mc_group_bit_mask;
+        uint8_t frag_index;
+    } frag_session;
+    uint16_t frag_nb;
+    uint8_t  frag_size;
+    struct
+    {
+        uint8_t block_ack_delay;
+        uint8_t frag_algo;
+    } control;
+    uint8_t  padding;
+    uint32_t descriptor;
+} frag_group_data_copy_t;
+
+typedef struct sFragDecoderStatus_copy
+{
+    uint16_t FragNbRx;
+    uint16_t FragNbLost;
+    uint16_t FragNbLastRx;
+    uint16_t MissingFrag;
+    uint8_t  MatrixError;
+} FragDecoderStatus_copy_t;
+
+#ifdef CONFIG_CRYPTO_MBEDTLS_SHIM
+#define CRYPTO_DRV_NAME CONFIG_CRYPTO_MBEDTLS_SHIM_DRV_NAME
+#elif DT_HAS_COMPAT_STATUS_OKAY(renesas_smartbond_crypto)
+#define CRYPTO_DEV_COMPAT renesas_smartbond_crypto
+#else
+#error "You need to enable one crypto device"
+#endif
 
 cmd_parse_status_t parse_cmd( cmd_input_t* cmd_input, cmd_response_t* cmd_output )
 {
@@ -2307,6 +2349,129 @@ cmd_parse_status_t parse_cmd( cmd_input_t* cmd_input, cmd_response_t* cmd_output
     }
 
 #endif  // ADD_APP_GEOLOCATION && STM32L476xx
+
+    case CMD_GET_FUOTA_METADATA:
+    {
+        cmd_output->return_code = CMD_RC_OK;
+
+        // fetch FUOTA metadata from flash
+        FragDecoderStatus_copy_t decoder_status;
+        frag_group_data_copy_t group_data;
+
+        uint8_t temp[16];
+        memset(temp, 0, 16);
+        smtc_modem_hal_context_restore(CONTEXT_FUOTA_METADATA, 0, temp, 16);
+        memcpy(&decoder_status, temp, sizeof(decoder_status));
+
+        memset(temp, 0, 16);
+        smtc_modem_hal_context_restore(CONTEXT_FUOTA_METADATA, 16, temp, 16);
+        memcpy(&group_data, temp, sizeof(group_data));
+
+        // calculate hash of fuota frames
+        struct hash_ctx ctx;
+
+        const struct device *dev = device_get_binding(CRYPTO_DRV_NAME);
+
+        if (!dev) {
+            SMTC_HAL_TRACE_INFO("Crypto device is not ready");
+        }
+
+        ctx.flags = CAP_SYNC_OPS | CAP_SEPARATE_IO_BUFS;
+
+        ret = hash_begin_session(dev, &ctx, CRYPTO_HASH_ALGO_SHA256);
+        if (ret != 0)
+            SMTC_HAL_TRACE_INFO("Failed to init sha256 session");
+
+        // incremental hash calculation
+        uint32_t data_size = group_data.frag_nb * group_data.frag_size - group_data.padding;
+        SMTC_HAL_TRACE_INFO("data size: %d\n", data_size);
+
+        uint8_t fuota_frag_buf[1024];
+
+        uint8_t hash_out_buf[32] = {0};
+        struct hash_pkt pkt = {
+			.out_buf = hash_out_buf
+		};
+
+        uint32_t remaining = data_size;
+        uint32_t offset = 0;
+        while (remaining > 0) {
+            uint32_t chunk_size = (remaining > 1024) ? 1024 : remaining;
+
+            smtc_modem_hal_context_restore(CONTEXT_FUOTA, offset, fuota_frag_buf, 1024);
+            SMTC_MODEM_HAL_TRACE_ARRAY("chunk:", fuota_frag_buf, 1024);
+            SMTC_MODEM_HAL_TRACE_INFO("chunk size: %d", chunk_size);
+
+            struct hash_pkt chunk_pkt = {
+              .in_buf = fuota_frag_buf,
+              .in_len = chunk_size
+            };
+            ret = hash_update(&ctx, &chunk_pkt);
+
+            if (ret != 0) {
+                SMTC_HAL_TRACE_INFO("Hash update failed: %d\n", ret);
+                hash_free_session(dev, &ctx);
+            } else {
+                SMTC_HAL_TRACE_INFO("Hash updated successfully: %d\n", ret);
+            }
+
+            remaining -= chunk_size;
+            offset += chunk_size;
+        }
+
+        ret = hash_compute(&ctx, &pkt);
+        if (ret != 0) {
+            SMTC_HAL_TRACE_INFO("Hash calculation failed: %d\n", ret);
+        } else {
+            SMTC_HAL_TRACE_INFO("hash computed successfully: %d", ret);
+            SMTC_MODEM_HAL_TRACE_ARRAY("Calculated hash: ", hash_out_buf, 32);
+        }
+
+        hash_free_session(dev, &ctx);
+
+        // send FUOTA metadata over serial
+        cmd_output->buffer[0] = ( decoder_status.FragNbRx >> 8 ) & 0xff;
+        cmd_output->buffer[1] = decoder_status.FragNbRx & 0xff;
+        cmd_output->buffer[2] = ( decoder_status.FragNbLost >> 8 ) & 0xff;
+        cmd_output->buffer[3] = decoder_status.FragNbLost & 0xff;
+        cmd_output->buffer[4] = ( decoder_status.FragNbLastRx >> 8 ) & 0xff;
+        cmd_output->buffer[5] = decoder_status.FragNbLastRx & 0xff;
+        cmd_output->buffer[6] = ( decoder_status.MissingFrag >> 8 ) & 0xff;
+        cmd_output->buffer[7] = decoder_status.MissingFrag & 0xff;
+        cmd_output->buffer[8] = decoder_status.MatrixError;
+
+        cmd_output->buffer[9] = group_data.is_active;
+        cmd_output->buffer[10] = ( group_data.frag_nb >> 8) & 0xff;
+        cmd_output->buffer[11] = group_data.frag_nb & 0xff;
+        cmd_output->buffer[12] = group_data.frag_size;
+        cmd_output->buffer[13] = group_data.padding;
+
+        cmd_output->buffer[14] = ( group_data.descriptor >> 24) & 0xff;
+        cmd_output->buffer[15] = ( group_data.descriptor >> 16) & 0xff;
+        cmd_output->buffer[16] = ( group_data.descriptor >> 8) & 0xff;
+        cmd_output->buffer[17] = group_data.descriptor & 0xff;
+
+        memcpy(&cmd_output->buffer[18], hash_out_buf, 32);
+
+        SMTC_HAL_TRACE_INFO( "decoder_status FragNbRx: %d, FragNbLost: %d, FragNbLastRx: %d, MissingFrag: %d, MatrixError: %d\n",
+                decoder_status.FragNbRx,
+                decoder_status.FragNbLost,
+                decoder_status.FragNbLastRx,
+                decoder_status.MissingFrag,
+                decoder_status.MatrixError
+                );
+        SMTC_HAL_TRACE_INFO( "group_data is_active: %d, frag_nb: %d, frag_size: %d, padding: %d, descriptor: %d\n",
+                group_data.is_active,
+                group_data.frag_nb,
+                group_data.frag_size,
+                group_data.padding,
+                group_data.descriptor
+                );
+
+        cmd_output->length = 50;
+        break;
+    }
+
     default:
     {
         SMTC_HAL_TRACE_ERROR( "Unknown command (0x%x)\n", cmd_input->cmd_code );
