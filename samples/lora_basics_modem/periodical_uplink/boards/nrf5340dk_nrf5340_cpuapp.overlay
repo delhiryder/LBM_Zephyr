@@ -1,0 +1,25 @@
+/*
+ * Copyright (c) 2024 Semtech Corporation
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/ {
+    aliases {
+        smtc-hal-uart = &uart0;
+        smtc-watchdog = &wdt;
+        smtc-user-button = &button0;
+    };
+};
+
+&flash0 {
+	partitions {
+		slot0_partition: partition@10000 {
+			reg = <0x000010000 0x000040000>;
+		};
+		
+		slot1_partition: partition@80000 {
+			reg = <0x000080000 0x000040000>;
+		};
+	};
+};

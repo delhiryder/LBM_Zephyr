@@ -23,6 +23,8 @@
 
 #include <zephyr/lorawan_lbm/lbm_main_thread.h>
 
+#include <zephyr/usb/usb_device.h>
+
 /*
  * -----------------------------------------------------------------------------
  * --- PRIVATE MACROS-----------------------------------------------------------
@@ -281,6 +283,16 @@ int main(void)
 {
 	int ret = 0;
 
+	if (IS_ENABLED(CONFIG_USB_DEVICE_STACK)) {
+		ret = usb_enable(NULL);
+
+		/* Ignore EALREADY error as USB CDC is likely already initialised */
+		if (ret != 0 && ret != -EALREADY) {
+			printk("Failed to enable USB");
+			return 0;
+		}
+	}
+
 	lora_basics_modem_start_work_thread(&modem_event_callback, &prv_hal_cb);
 
 	if (!gpio_is_ready_dt(&button)) {
@@ -306,7 +318,7 @@ int main(void)
 	gpio_init_callback(&button_cb_data, button_pressed, BIT(button.pin));
 	gpio_add_callback(button.port, &button_cb_data);
 
-    SMTC_HAL_TRACE_INFO( "Periodical uplink (%d sec) example is starting \n", PERIODICAL_UPLINK_DELAY_S );
+    SMTC_HAL_TRACE_INFO( "Periodical uplink V3 (%d sec) example is starting \n", PERIODICAL_UPLINK_DELAY_S );
 
     while (true) {
         // Check button
