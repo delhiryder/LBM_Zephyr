@@ -11,6 +11,8 @@
 
 #include "cmd_parser.h"
 
+#include "common.h"
+
 /* lr11xx radio context and its use in the ralf layer */
 static const struct device *transceiver = DEVICE_DT_GET(DT_ALIAS(lora_transceiver));
 
@@ -92,7 +94,11 @@ int main(void)
 #endif /* CONFIG_LORA_BASICS_MODEM_FUOTA */
 	};
 
-	smtc_modem_set_radio_context(transceiver);
+#ifdef CONFIG_MCUMGR_TRANSPORT_BT
+    start_smp_bluetooth_adverts();
+#endif
+
+    smtc_modem_set_radio_context(transceiver);
 	smtc_modem_hal_init(transceiver);
 	smtc_modem_hal_register_callbacks(&prv_hal_cb);
 
