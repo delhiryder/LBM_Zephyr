@@ -12,9 +12,6 @@
     };
 };
 
-/delete-node/ &slot0_ns_partition;
-/delete-node/ &slot1_ns_partition;
-
 &flash0 {
 	partitions {
 		slot0_partition: partition@10000 {

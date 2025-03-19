@@ -15,6 +15,8 @@
 
 #include "example_options.h"
 
+#include "common.h"
+
 #include "smtc_hal_watchdog.h"
 
 #include <zephyr/kernel.h>
@@ -292,6 +294,10 @@ int main(void)
 			return 0;
 		}
 	}
+
+#ifdef CONFIG_MCUMGR_TRANSPORT_BT
+    start_smp_bluetooth_adverts();
+#endif
 
 	lora_basics_modem_start_work_thread(&modem_event_callback, &prv_hal_cb);
 

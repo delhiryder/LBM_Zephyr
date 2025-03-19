@@ -13,6 +13,8 @@ zephyr_compile_options(-fdiagnostics-color=always)
 
 zephyr_include_directories(src)
 target_sources(app PRIVATE src/main_periodical_uplink.c)
+target_sources_ifdef(CONFIG_MCUMGR_TRANSPORT_BT app PRIVATE src/bluetooth.c)
+
 
 # Based on some LBM features, different flags are used in the sample for some
 # reason, so we map to them here.
