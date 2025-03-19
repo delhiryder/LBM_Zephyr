@@ -4,8 +4,8 @@
 manifest:
   projects:
     - name: zephyr
-      url: https://github.com/zephyrproject-rtos/zephyr
-      revision: v3.7.0
+      url: https://github.com/nrfconnect/sdk-zephyr
+      revision: v3.7.99-ncs1
       import: true
 
     - name: lora_basics_modem
