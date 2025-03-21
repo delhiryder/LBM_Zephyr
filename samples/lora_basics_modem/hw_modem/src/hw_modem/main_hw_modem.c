@@ -107,6 +107,8 @@ void main_hw_modem( void )
         // Check if a command is available
         if( hw_modem_is_a_cmd_available( ) == true )
         {
+            LOG_INF("about to call hw_process_cmd");
+
             // Command may generate work for the stack, so drop down to smtc_modem_run_engine().
             hw_modem_process_cmd( );
         }

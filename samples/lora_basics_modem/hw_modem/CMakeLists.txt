@@ -25,3 +25,9 @@ zephyr_compile_definitions_ifdef(
 
 zephyr_compile_definitions_ifdef(CONFIG_LORA_BASICS_MODEM_RELAY_TX_ENABLE
                                  USE_RELAY_TX)
+
+zephyr_compile_definitions(
+    FRAG_MAX_NB=4000
+    FRAG_MAX_REDUNDANCY=400
+    FRAG_MAX_SIZE=242
+)
