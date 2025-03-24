@@ -27,6 +27,9 @@
 
 #include <zephyr/usb/usb_device.h>
 
+#ifdef CONFIG_MCUMGR_TRANSPORT_LBM
+#include <zephyr/smp_lbm/smp_lbm.h>
+#endif
 /*
  * -----------------------------------------------------------------------------
  * --- PRIVATE MACROS-----------------------------------------------------------
@@ -484,6 +487,9 @@ static void modem_event_callback( void )
                 smtc_modem_get_downlink_data( rx_payload, &rx_payload_size, &rx_metadata, &rx_remaining ) );
             SMTC_HAL_TRACE_PRINTF( "Data received on port %u\n", rx_metadata.fport );
             SMTC_HAL_TRACE_ARRAY( "Received payload", rx_payload, rx_payload_size );
+#ifdef CONFIG_MCUMGR_TRANSPORT_LBM
+            smp_lbm_downlink(rx_metadata.fport, rx_payload_size, rx_payload);
+#endif
             break;
 
         case SMTC_MODEM_EVENT_JOINFAIL:
