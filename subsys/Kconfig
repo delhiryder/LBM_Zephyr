@@ -8,6 +8,6 @@ menu "Subsystems and OS Services"
 
 rsource "lorawan_lbm/Kconfig"
 
-# rsource "smp_lbm/Kconfig"
+rsource "smp_lbm/Kconfig"
 
 endmenu

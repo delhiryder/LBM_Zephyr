@@ -486,6 +486,7 @@ static void modem_event_callback( void )
             ASSERT_SMTC_MODEM_RC(
                 smtc_modem_get_downlink_data( rx_payload, &rx_payload_size, &rx_metadata, &rx_remaining ) );
             SMTC_HAL_TRACE_PRINTF( "Data received on port %u\n", rx_metadata.fport );
+            SMTC_HAL_TRACE_PRINTF("rx_payload_size: %u\n", rx_payload_size);
             SMTC_HAL_TRACE_ARRAY( "Received payload", rx_payload, rx_payload_size );
 #ifdef CONFIG_MCUMGR_TRANSPORT_LBM
             smp_lbm_downlink(rx_metadata.fport, rx_payload_size, rx_payload);
