@@ -289,8 +289,6 @@ static uint32_t priv_hal_context_address(const modem_context_type_t ctx_type, ui
 		return ADDR_STORE_AND_FORWARD_CONTEXT_OFFSET + offset;
 	case CONTEXT_SECURE_ELEMENT:
 		return ADDR_SECURE_ELEMENT_CONTEXT_OFFSET + offset;
-//	case CONTEXT_FUOTA_METADATA:
-//		return ADDR_FUOTA_METADATA_CONTEXT_OFFSET + offset;
 	}
 	k_oops();
 	CODE_UNREACHABLE;
@@ -315,6 +313,8 @@ void smtc_modem_hal_context_restore(const modem_context_type_t ctx_type, uint32_
 }
 
 uint8_t page_buffer[4096];
+
+
 
 // We assume (FIXME:) that stores are only on one sector.
 // FIXME: we assume page size = 4096B like in nrf
@@ -365,6 +365,9 @@ void smtc_modem_hal_context_store(const modem_context_type_t ctx_type, uint32_t 
 		//LOG_INF("remaining space in page %d: %d", page, remaining_space);
 		LOG_INF("real_offset: %d", real_offset);
 
+        LOG_INF("offset: %d", offset);
+        LOG_INF("size: %d", size);
+
 		// check if write will cross page boundaries
 		// if (remaining_space < size) {
 		// 	LOG_INF("page boundaries crossed");
@@ -381,7 +384,23 @@ void smtc_modem_hal_context_store(const modem_context_type_t ctx_type, uint32_t 
 		flash_area_erase(context_flash_area, ADDR_FUOTA_CONTEXT_OFFSET + page * page_size, page_size);
 		rc = flash_area_write(context_flash_area, ADDR_FUOTA_CONTEXT_OFFSET + page * page_size, page_buffer, page_size);
 
-	} else {
+
+        // Write the last FUOTA context store info
+        // But only if the offset is greater than the last one
+        // This is because of the peculiarities of the FUOTA re-assembly process
+        last_fuota_context_store_info_t last_store_info;
+        if ((uint16_t)offset > last_store_info.max_offset) {
+            last_store_info.max_offset = (uint16_t)offset;
+            last_store_info.size = (uint16_t)size;
+        }
+
+        memset(page_buffer, 0, 4096);
+        memcpy(page_buffer, &last_store_info, sizeof(last_fuota_context_store_info_t));
+
+        flash_area_erase(context_flash_area, ADDR_FUOTA_METADATA_CONTEXT_OFFSET, 4096);
+        rc = flash_area_write(context_flash_area, ADDR_FUOTA_METADATA_CONTEXT_OFFSET, page_buffer, 4096);
+
+    } else {
 		// LOG_INF("%s: offset %d, real_offset=%d", __FUNCTION__, offset, real_offset);
 		memset(page_buffer, 0, real_size);
 		// yes, size, not real_size
@@ -391,6 +410,32 @@ void smtc_modem_hal_context_store(const modem_context_type_t ctx_type, uint32_t 
 
 	LOG_INF("write success: %d", rc);
 	return;
+}
+
+void get_fuota_context_store_info(last_fuota_context_store_info_t *info) {
+    uint8_t temp[16];
+    memset(temp, 0, 16);
+    int rc;
+
+    rc = flash_area_read(context_flash_area, ADDR_FUOTA_METADATA_CONTEXT_OFFSET, temp, 16);
+
+    LOG_INF("read success: %d", rc);
+
+    memcpy(info, temp, sizeof(last_fuota_context_store_info_t));
+}
+
+void clear_fuota_context_store_info(void) {
+    last_fuota_context_store_info_t info;
+    info.max_offset = 0;
+    info.size = 0;
+
+    uint8_t temp[16];
+    memset(temp, 0, 16);
+    memcpy(temp, &info, sizeof(last_fuota_context_store_info_t));
+
+    int rc = flash_area_write(context_flash_area, ADDR_FUOTA_METADATA_CONTEXT_OFFSET, temp, 16);
+
+    LOG_INF("write success: %d", rc);
 }
 
 // We assume (FIXME:) that erases are aligned on sectors

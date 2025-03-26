@@ -126,6 +126,14 @@ static const uint8_t user_app_key[16]     = USER_LORAWAN_APP_KEY;
 #define DELAY_FIRST_MSG_AFTER_JOIN 60
 #endif
 
+#ifndef SMP_FPORT
+#define SMP_FPORT 2
+#endif
+
+#ifndef MAX_SMP_FUOTA_DATA_BLOCK_SIZE
+#define MAX_SMP_FUOTA_DATA_BLOCK_SIZE 2048
+#endif
+
 /**
  * @brief Blue user button or BUTTON 1 on nrf52840-dk
  */
@@ -150,6 +158,7 @@ static struct gpio_callback button_cb_data;
  * --- PRIVATE VARIABLES -------------------------------------------------------
  */
 static uint8_t                  rx_payload[SMTC_MODEM_MAX_LORAWAN_PAYLOAD_LENGTH] = { 0 };  // Buffer for rx payload
+static uint8_t                  fuota_payload[MAX_SMP_FUOTA_DATA_BLOCK_SIZE] = { 0 };  // Buffer for fuota payload
 static uint8_t                  rx_payload_size = 0;      // Size of the payload in the rx_payload buffer
 static smtc_modem_dl_metadata_t rx_metadata     = { 0 };  // Metadata of downlink
 static uint8_t                  rx_remaining    = 0;      // Remaining downlink payload in modem
@@ -523,6 +532,38 @@ static void modem_event_callback( void )
             if( status == true )
             {
                 SMTC_HAL_TRACE_INFO( "Event received: FUOTA SUCCESSFUL\n" );
+                // Fetch the fuota metadata from FLASH
+                last_fuota_context_store_info_t info;
+                get_fuota_context_store_info(&info);
+
+                SMTC_HAL_TRACE_INFO( "FUOTA metadata: \n" );
+                SMTC_HAL_TRACE_INFO( "  Offset : %u\n", info.max_offset );
+                SMTC_HAL_TRACE_INFO( "  Size   : %u\n", info.size );
+
+                uint16_t total_size = info.max_offset + info.size;
+
+                SMTC_HAL_TRACE_INFO(" FUOTA total size: %u\n", total_size );
+
+                if (total_size > MAX_SMP_FUOTA_DATA_BLOCK_SIZE) {
+                    SMTC_HAL_TRACE_ERROR( "FUOTA total size %u is too big\n", total_size );
+                    SMTC_HAL_TRACE_ERROR( "Expected it to be <= %u\n", MAX_SMP_FUOTA_DATA_BLOCK_SIZE );
+                    break;
+                }
+
+                // Read the FUOTA payload from FLASH
+                memset(fuota_payload, 0, MAX_SMP_FUOTA_DATA_BLOCK_SIZE);
+                smtc_modem_hal_context_restore(CONTEXT_FUOTA, 0, fuota_payload, total_size);
+
+                // Clear the info object, so that it may be (re)used
+                clear_fuota_context_store_info();
+
+                // Send the payload (along with the SMP header) to the smp server
+#ifdef CONFIG_MCUMGR_TRANSPORT_LBM
+                SMTC_HAL_TRACE_INFO( "Sending FUOTA payload to the smp server\n" );
+                SMTC_HAL_TRACE_INFO( "FUOTA payload size: %u\n", total_size );
+                smp_lbm_downlink(SMP_FPORT, total_size, fuota_payload);
+                SMTC_HAL_TRACE_INFO( "FUOTA payload sent to the smp server\n" );
+#endif
             }
             else
             {

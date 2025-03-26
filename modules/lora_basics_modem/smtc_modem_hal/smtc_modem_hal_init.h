@@ -176,6 +176,14 @@ void smtc_modem_hal_interruptible_msleep(k_timeout_t timeout);
 
 void smtc_modem_hal_wake_up();
 
+typedef struct {
+    uint16_t max_offset;
+    uint16_t size;
+} last_fuota_context_store_info_t;
+
+void get_fuota_context_store_info(last_fuota_context_store_info_t *info);
+void clear_fuota_context_store_info(void);
+
 #ifdef __cplusplus
 }
 #endif

@@ -119,7 +119,7 @@ static void smp_lbm_uplink_thread(void *p1, void *p2, void *p3)
 }
 #endif
 
-void smp_lbm_downlink(uint8_t port, uint8_t len, const uint8_t *hex_data)
+void smp_lbm_downlink(uint8_t port, uint16_t len, const uint8_t *hex_data)
 {
 
     LOG_ERR("Lbm SMP downlink: port %d, len %d", port, len);
