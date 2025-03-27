@@ -389,6 +389,8 @@ void smtc_modem_hal_context_store(const modem_context_type_t ctx_type, uint32_t 
         // But only if the offset is greater than the last one
         // This is because of the peculiarities of the FUOTA re-assembly process
         last_fuota_context_store_info_t last_store_info;
+
+        get_fuota_context_store_info(&last_store_info);
         if ((uint16_t)offset > last_store_info.max_offset) {
             last_store_info.max_offset = (uint16_t)offset;
             last_store_info.size = (uint16_t)size;

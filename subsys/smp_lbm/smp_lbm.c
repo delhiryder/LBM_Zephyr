@@ -88,7 +88,7 @@ static void smp_lbm_uplink_thread(void *p1, void *p2, void *p3)
 			while (tries > 0) {
 				int rc;
 
-				rc = smtc_modem_request_uplink(LBM_STACK_ID, CONFIG_MCUMGR_TRANSPORT_LBM_FRAME_PORT,
+				rc = smtc_modem_request_emergency_uplink(LBM_STACK_ID, CONFIG_MCUMGR_TRANSPORT_LBM_FRAME_PORT,
 #if defined(CONFIG_MCUMGR_TRANSPORT_LBM_CONFIRMED_UPLINKS)
 						  true,
 #else
@@ -177,6 +177,8 @@ static int smp_lbm_uplink(struct net_buf *nb)
 {
 	int rc = 0;
 
+    LOG_ERR("Lbm SMP uplink: len %d\n", nb->len);
+
 #ifdef CONFIG_MCUMGR_TRANSPORT_LBM_FRAGMENTED_UPLINKS
 	struct smp_lbm_uplink_message_t tx_data = {
 		.nb = nb,
@@ -195,7 +197,7 @@ static int smp_lbm_uplink(struct net_buf *nb)
 		LOG_ERR("Cannot send Lbm SMP message, too large. Message: %d, maximum: %d",
 			nb->len, data_size);
 	} else {
-		rc = smtc_modem_request_uplink(LBM_STACK_ID, CONFIG_MCUMGR_TRANSPORT_LBM_FRAME_PORT,
+		rc = smtc_modem_request_emergency_uplink(LBM_STACK_ID, CONFIG_MCUMGR_TRANSPORT_LBM_FRAME_PORT,
 #if defined(CONFIG_MCUMGR_TRANSPORT_LBM_CONFIRMED_UPLINKS)
 				  true,
 #else

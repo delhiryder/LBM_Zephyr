@@ -166,6 +166,8 @@ static uint8_t                  rx_remaining    = 0;      // Remaining downlink 
 static volatile bool user_button_is_press = false;  // Flag for button status
 static uint32_t      uplink_counter       = 0;      // uplink raising counter
 
+static volatile uint32_t last_downlink_epoch_time_s = 0;
+
 #if defined( USE_RELAY_TX )
 static smtc_modem_relay_tx_config_t relay_config = { 0 };
 #endif
@@ -272,7 +274,6 @@ static struct smtc_modem_hal_cb prv_hal_cb = {
 	.get_fw_delete_status_for_fuota = prv_get_fw_delete_status_for_fuota,
 #endif /* CONFIG_LORA_BASICS_MODEM_FUOTA */
 };
-
 
 /*
  * -----------------------------------------------------------------------------
@@ -464,6 +465,13 @@ static void modem_event_callback( void )
 
         case SMTC_MODEM_EVENT_ALARM:
             SMTC_HAL_TRACE_INFO( "Event received: ALARM\n" );
+
+            if (last_downlink_epoch_time_s > 0 &&
+            (smtc_modem_hal_get_time_in_s() - last_downlink_epoch_time_s) < 10 * PERIODICAL_UPLINK_DELAY_S) {
+                // If we received a downlink recently, wait for the next periodical uplink
+                SMTC_HAL_TRACE_INFO("Waiting for next periodical uplink\n");
+                return;
+            }
             // Send periodical uplink on port 101
             send_uplink_counter_on_port( 101 );
             // Restart periodical uplink alarm
@@ -487,6 +495,8 @@ static void modem_event_callback( void )
         case SMTC_MODEM_EVENT_TXDONE:
             SMTC_HAL_TRACE_INFO( "Event received: TXDONE\n" );
             SMTC_HAL_TRACE_INFO( "Transmission done \n" );
+            SMTC_HAL_TRACE_INFO( " Modem status: %d\n", current_event.event_data.txdone.status );
+
             break;
 
         case SMTC_MODEM_EVENT_DOWNDATA:
@@ -497,6 +507,8 @@ static void modem_event_callback( void )
             SMTC_HAL_TRACE_PRINTF( "Data received on port %u\n", rx_metadata.fport );
             SMTC_HAL_TRACE_PRINTF("rx_payload_size: %u\n", rx_payload_size);
             SMTC_HAL_TRACE_ARRAY( "Received payload", rx_payload, rx_payload_size );
+            // Capture the epoch time
+            last_downlink_epoch_time_s = smtc_modem_hal_get_time_in_s();
 #ifdef CONFIG_MCUMGR_TRANSPORT_LBM
             smp_lbm_downlink(rx_metadata.fport, rx_payload_size, rx_payload);
 #endif
@@ -582,10 +594,14 @@ static void modem_event_callback( void )
 
         case SMTC_MODEM_EVENT_NEW_MULTICAST_SESSION_CLASS_C:
             SMTC_HAL_TRACE_INFO( "Event received: New MULTICAST CLASS_C \n" );
+            // Clear the info object, so that it may be (re)used
+            clear_fuota_context_store_info();
             break;
 
         case SMTC_MODEM_EVENT_NEW_MULTICAST_SESSION_CLASS_B:
             SMTC_HAL_TRACE_INFO( "Event received: New MULTICAST CLASS_B\n" );
+            // Clear the info object, so that it may be (re)used
+            clear_fuota_context_store_info();
             break;
 
         case SMTC_MODEM_EVENT_FIRMWARE_MANAGEMENT:
