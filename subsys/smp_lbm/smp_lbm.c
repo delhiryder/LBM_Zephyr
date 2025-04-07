@@ -37,6 +37,13 @@ struct smp_client_transport_entry smp_lbm_client_transport = {
 };
 #endif
 
+static volatile bool confirmed_uplink_ack_received = false;
+static volatile bool fuota_successful = false;
+static volatile struct net_buf *local_uplink_copy = NULL;
+#define MAX_UPLINK_RETRY_COUNT 1
+static volatile uint8_t retry_count = 0;
+static volatile uint16_t net_buf_invoke_count = 0;
+
 #ifdef CONFIG_MCUMGR_TRANSPORT_LBM_POLL_FOR_DATA
 static struct k_thread smp_lbm_thread;
 K_KERNEL_STACK_MEMBER(smp_lbm_stack, CONFIG_MCUMGR_TRANSPORT_LBM_POLL_FOR_DATA_STACK_SIZE);
@@ -97,6 +104,10 @@ static void smp_lbm_uplink_thread(void *p1, void *p2, void *p3)
 						  data, data_size
 						 );
 
+#if defined(CONFIG_MCUMGR_TRANSPORT_LBM_CONFIRMED_UPLINKS)
+//                memcpy()
+#endif
+
 				if (rc != 0) {
 					--tries;
 				} else {
@@ -118,6 +129,13 @@ static void smp_lbm_uplink_thread(void *p1, void *p2, void *p3)
 	}
 }
 #endif
+
+void smp_lbm_set_fuota_successful(bool success)
+{
+    LOG_ERR("Setting FUOTA successful: %d", success);
+    fuota_successful = success;
+    confirmed_uplink_ack_received = false;
+}
 
 void smp_lbm_downlink(uint8_t port, uint16_t len, const uint8_t *hex_data)
 {
@@ -173,11 +191,63 @@ void smp_lbm_downlink(uint8_t port, uint16_t len, const uint8_t *hex_data)
 	}
 }
 
+void smp_lbm_set_confirmed_uplink_ack_received(bool received)
+{
+    LOG_ERR("Setting uplink ack received: %d", received);
+    if (received == true) {
+        confirmed_uplink_ack_received = true;
+        fuota_successful = false;
+        retry_count = 0;
+        net_buf_invoke_count -= 1;
+        net_buf_unref(local_uplink_copy); // Free the last uplink copy
+        local_uplink_copy = NULL; // Clear the reference
+    }
+}
+
+void smp_lbm_maybe_resend_uplink(void)
+{
+    if (fuota_successful == true && confirmed_uplink_ack_received == false) {
+        retry_count++;
+        if (local_uplink_copy == NULL) {
+            LOG_ERR("No local uplink copy to resend, aborting retry");
+            return;
+        }
+        if (retry_count > MAX_UPLINK_RETRY_COUNT) {
+            LOG_ERR("retry_count %d exceeds the maximum %u, aborting retry",
+                    retry_count, MAX_UPLINK_RETRY_COUNT);
+            return;
+        }
+        LOG_ERR("Retrying uplink...");
+        smp_lbm_uplink(local_uplink_copy); // Resend the last uplink copy
+    }
+}
+
 static int smp_lbm_uplink(struct net_buf *nb)
 {
 	int rc = 0;
 
     LOG_ERR("Lbm SMP uplink: len %d\n", nb->len);
+    LOG_ERR("net_buf_address: %p\n", nb);
+    LOG_ERR("local_uplink_copy address: %p\n", local_uplink_copy);
+
+    // First, make sure the previous copy has been freed
+    if (local_uplink_copy != NULL && nb != local_uplink_copy)
+    {
+        net_buf_unref(local_uplink_copy); // Free the previous copy
+        local_uplink_copy = NULL;
+        net_buf_invoke_count -= 1;
+        LOG_ERR("Lbm SMP uplink: freed previous copy, net_buf_invoke_count %d\n", net_buf_invoke_count);
+    }
+
+    // Save a copy, since we may have to retransmit this uplink
+    // in the case of a FUOTA operation
+    // But only if the local_uplink_copy is actually NULL
+    if (local_uplink_copy == NULL) {
+        local_uplink_copy = net_buf_clone(nb, K_NO_WAIT);
+        net_buf_invoke_count += 1;
+        LOG_ERR("Lbm SMP uplink: net_buf_invoke_count %d\n", net_buf_invoke_count);
+        LOG_ERR("local_uplink_copy address: %p\n", local_uplink_copy);
+    }
 
 #ifdef CONFIG_MCUMGR_TRANSPORT_LBM_FRAGMENTED_UPLINKS
 	struct smp_lbm_uplink_message_t tx_data = {
@@ -197,6 +267,7 @@ static int smp_lbm_uplink(struct net_buf *nb)
 		LOG_ERR("Cannot send Lbm SMP message, too large. Message: %d, maximum: %d",
 			nb->len, data_size);
 	} else {
+        LOG_ERR("Sending an unfragmented uplink...")
 		rc = smtc_modem_request_emergency_uplink(LBM_STACK_ID, CONFIG_MCUMGR_TRANSPORT_LBM_FRAME_PORT,
 #if defined(CONFIG_MCUMGR_TRANSPORT_LBM_CONFIRMED_UPLINKS)
 				  true,
@@ -205,10 +276,14 @@ static int smp_lbm_uplink(struct net_buf *nb)
 #endif
                     nb->data, nb->len
 				 );
-
+#if defined(CONFIG_MCUMGR_TRANSPORT_LBM_CONFIRMED_UPLINKS)
+        LOG_ERR("Sending an unfragmented configmed uplink...");
+#endif
 		if (rc != 0) {
 			LOG_ERR("Failed to send Lbm SMP message: %d", rc);
 		}
+
+
 	}
 #endif
 

@@ -21,6 +21,8 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/gpio.h>
+#include <zephyr/sys/sys_heap.h>
+
 #include <smtc_modem_hal_init.h>
 
 #include <zephyr/lorawan_lbm/lbm_main_thread.h>
@@ -396,6 +398,8 @@ int main(void)
  * --- PRIVATE FUNCTIONS DEFINITION --------------------------------------------
  */
 
+extern struct sys_heap _system_heap;
+
 static void modem_event_callback( void )
 {
     SMTC_HAL_TRACE_MSG( "Modem event callback\n");
@@ -466,6 +470,9 @@ static void modem_event_callback( void )
         case SMTC_MODEM_EVENT_ALARM:
             SMTC_HAL_TRACE_INFO( "Event received: ALARM\n" );
 
+            // Restart periodical uplink alarm
+            ASSERT_SMTC_MODEM_RC( smtc_modem_alarm_start_timer( PERIODICAL_UPLINK_DELAY_S ) );
+
             if (last_downlink_epoch_time_s > 0 &&
             (smtc_modem_hal_get_time_in_s() - last_downlink_epoch_time_s) < 10 * PERIODICAL_UPLINK_DELAY_S) {
                 // If we received a downlink recently, wait for the next periodical uplink
@@ -474,8 +481,6 @@ static void modem_event_callback( void )
             }
             // Send periodical uplink on port 101
             send_uplink_counter_on_port( 101 );
-            // Restart periodical uplink alarm
-            ASSERT_SMTC_MODEM_RC( smtc_modem_alarm_start_timer( PERIODICAL_UPLINK_DELAY_S ) );
             break;
 
         case SMTC_MODEM_EVENT_JOINED:
@@ -496,6 +501,17 @@ static void modem_event_callback( void )
             SMTC_HAL_TRACE_INFO( "Event received: TXDONE\n" );
             SMTC_HAL_TRACE_INFO( "Transmission done \n" );
             SMTC_HAL_TRACE_INFO( " Modem status: %d\n", current_event.event_data.txdone.status );
+#ifdef CONFIG_MCUMGR_TRANSPORT_LBM
+            if (current_event.event_data.txdone.status == SMTC_MODEM_EVENT_TXDONE_CONFIRMED)
+            {
+                smp_lbm_set_confirmed_uplink_ack_received(true);
+            }
+            else
+            {
+                smp_lbm_set_confirmed_uplink_ack_received(false);
+            }
+            sys_heap_print_info(&_system_heap, false);
+#endif
 
             break;
 
@@ -536,6 +552,13 @@ static void modem_event_callback( void )
 
         case SMTC_MODEM_EVENT_LORAWAN_MAC_TIME:
             SMTC_HAL_TRACE_WARNING( "Event received: LORAWAN MAC TIME\n" );
+            // Hack(ish): needed to ensure Class A devices with the capabilities enabled
+            // can be auto switched to Class C
+            maybe_switch_to_class_C(stack_id);
+
+            // Send another periodical uplink on port 101
+            send_uplink_counter_on_port( 101 );
+
             break;
 
         case SMTC_MODEM_EVENT_LORAWAN_FUOTA_DONE:
@@ -575,6 +598,7 @@ static void modem_event_callback( void )
                 SMTC_HAL_TRACE_INFO( "FUOTA payload size: %u\n", total_size );
                 smp_lbm_downlink(SMP_FPORT, total_size, fuota_payload);
                 SMTC_HAL_TRACE_INFO( "FUOTA payload sent to the smp server\n" );
+                smp_lbm_set_fuota_successful(true);
 #endif
             }
             else
@@ -586,10 +610,16 @@ static void modem_event_callback( void )
 
         case SMTC_MODEM_EVENT_NO_MORE_MULTICAST_SESSION_CLASS_C:
             SMTC_HAL_TRACE_INFO( "Event received: MULTICAST CLASS_C STOP\n" );
+#ifdef CONFIG_MCUMGR_TRANSPORT_LBM
+            smp_lbm_maybe_resend_uplink(); // Allow LBM to resend the last uplink in case of FUOTA
+#endif
             break;
 
         case SMTC_MODEM_EVENT_NO_MORE_MULTICAST_SESSION_CLASS_B:
             SMTC_HAL_TRACE_INFO( "Event received: MULTICAST CLASS_B STOP\n" );
+#ifdef CONFIG_MCUMGR_TRANSPORT_LBM
+            smp_lbm_maybe_resend_uplink(); // Allow LBM to resend the last uplink in case of FUOTA
+#endif
             break;
 
         case SMTC_MODEM_EVENT_NEW_MULTICAST_SESSION_CLASS_C:
