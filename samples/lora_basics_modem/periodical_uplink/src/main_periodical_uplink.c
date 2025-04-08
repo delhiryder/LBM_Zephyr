@@ -293,6 +293,41 @@ void button_pressed(const struct device *dev, struct gpio_callback *cb,
 	user_button_callback(dev);
 }
 
+static void maybe_switch_to_class_B(uint8_t stack_id)
+{
+    smtc_modem_class_t modem_class = SMTC_MODEM_CLASS_A;
+
+    smtc_modem_get_class( stack_id, &modem_class );
+    SMTC_HAL_TRACE_INFO( "Modem class is %d\n", modem_class );
+
+    if (modem_class == SMTC_MODEM_CLASS_A) {
+
+        int set_class_rc = -1;
+
+        SMTC_HAL_TRACE_INFO("Trying to switch to class B\n");
+        set_class_rc = smtc_modem_set_class( STACK_ID, SMTC_MODEM_CLASS_B );
+
+        if (set_class_rc == 0) {
+            int set_ping_slot_periodicity_rc = -1;
+            SMTC_HAL_TRACE_INFO("Switched to class B\n");
+            smtc_modem_get_class( STACK_ID, &modem_class );
+            SMTC_HAL_TRACE_INFO( "Modem class is now %d\n", modem_class );
+            SMTC_HAL_TRACE_INFO( "Setting the class_B ping slot periodicity to %u\n", SMTC_MODEM_CLASS_B_PINGSLOT_4_S);
+            set_ping_slot_periodicity_rc = smtc_modem_class_b_set_ping_slot_periodicity( STACK_ID, SMTC_MODEM_CLASS_B_PINGSLOT_4_S );
+
+            if (set_ping_slot_periodicity_rc == 0) {
+                SMTC_HAL_TRACE_INFO("Set ping slot periodicity to %u\n", SMTC_MODEM_CLASS_B_PINGSLOT_4_S);
+            } else {
+                SMTC_HAL_TRACE_INFO("Failed to set ping slot periodicity: %d\n", set_ping_slot_periodicity_rc);
+            }
+
+        } else {
+            SMTC_HAL_TRACE_INFO("Failed to switch to class C: %d\n", set_class_rc);
+        }
+
+    }
+}
+
 static void maybe_switch_to_class_C(uint8_t stack_id)
 {
     smtc_modem_class_t modem_class = SMTC_MODEM_CLASS_A;
@@ -375,7 +410,8 @@ int main(void)
             smtc_modem_get_status( STACK_ID, &status_mask );
 
             // Hack(ish): needed to ensure Class A devices can be auto switched to Class C
-            maybe_switch_to_class_C(STACK_ID);
+//            maybe_switch_to_class_C(STACK_ID);
+            maybe_switch_to_class_B(STACK_ID);
 
             // Check if the device has already joined a network
             if ((status_mask & SMTC_MODEM_STATUS_JOINED) == SMTC_MODEM_STATUS_JOINED) {
@@ -489,7 +525,8 @@ static void modem_event_callback( void )
 
             // Hack(ish): needed to ensure Class A devices with the capabilities enabled
             // can be auto switched to Class C
-            maybe_switch_to_class_C(stack_id);
+//            maybe_switch_to_class_C(stack_id);
+            maybe_switch_to_class_B(stack_id);
 
             // Send first periodical uplink on port 101
             send_uplink_counter_on_port( 101 );
@@ -554,7 +591,8 @@ static void modem_event_callback( void )
             SMTC_HAL_TRACE_WARNING( "Event received: LORAWAN MAC TIME\n" );
             // Hack(ish): needed to ensure Class A devices with the capabilities enabled
             // can be auto switched to Class C
-            maybe_switch_to_class_C(stack_id);
+//            maybe_switch_to_class_C(stack_id);
+            maybe_switch_to_class_B(stack_id);
 
             // Send another periodical uplink on port 101
             send_uplink_counter_on_port( 101 );

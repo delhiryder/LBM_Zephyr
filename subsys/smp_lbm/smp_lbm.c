@@ -95,7 +95,7 @@ static void smp_lbm_uplink_thread(void *p1, void *p2, void *p3)
 			while (tries > 0) {
 				int rc;
 
-				rc = smtc_modem_request_emergency_uplink(LBM_STACK_ID, CONFIG_MCUMGR_TRANSPORT_LBM_FRAME_PORT,
+				rc = smtc_modem_request_uplink(LBM_STACK_ID, CONFIG_MCUMGR_TRANSPORT_LBM_FRAME_PORT,
 #if defined(CONFIG_MCUMGR_TRANSPORT_LBM_CONFIRMED_UPLINKS)
 						  true,
 #else
@@ -104,9 +104,6 @@ static void smp_lbm_uplink_thread(void *p1, void *p2, void *p3)
 						  data, data_size
 						 );
 
-#if defined(CONFIG_MCUMGR_TRANSPORT_LBM_CONFIRMED_UPLINKS)
-//                memcpy()
-#endif
 
 				if (rc != 0) {
 					--tries;
@@ -242,7 +239,10 @@ static int smp_lbm_uplink(struct net_buf *nb)
     // Save a copy, since we may have to retransmit this uplink
     // in the case of a FUOTA operation
     // But only if the local_uplink_copy is actually NULL
-    if (local_uplink_copy == NULL) {
+    // AND the FUOTA successful flag is set
+    // AND the confirmed uplink ack has not been received
+    if (fuota_successful == true && confirmed_uplink_ack_received == false &&
+        local_uplink_copy == NULL) {
         local_uplink_copy = net_buf_clone(nb, K_NO_WAIT);
         net_buf_invoke_count += 1;
         LOG_ERR("Lbm SMP uplink: net_buf_invoke_count %d\n", net_buf_invoke_count);
@@ -268,7 +268,7 @@ static int smp_lbm_uplink(struct net_buf *nb)
 			nb->len, data_size);
 	} else {
         LOG_ERR("Sending an unfragmented uplink...")
-		rc = smtc_modem_request_emergency_uplink(LBM_STACK_ID, CONFIG_MCUMGR_TRANSPORT_LBM_FRAME_PORT,
+		rc = smtc_modem_request_uplink(LBM_STACK_ID, CONFIG_MCUMGR_TRANSPORT_LBM_FRAME_PORT,
 #if defined(CONFIG_MCUMGR_TRANSPORT_LBM_CONFIRMED_UPLINKS)
 				  true,
 #else
