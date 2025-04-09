@@ -195,7 +195,9 @@ void smp_lbm_set_confirmed_uplink_ack_received(bool received)
         confirmed_uplink_ack_received = true;
         fuota_successful = false;
         retry_count = 0;
-        net_buf_invoke_count -= 1;
+        if (net_buf_invoke_count > 0) {
+            net_buf_invoke_count -= 1;
+        }
         net_buf_unref(local_uplink_copy); // Free the last uplink copy
         local_uplink_copy = NULL; // Clear the reference
     }
@@ -232,7 +234,9 @@ static int smp_lbm_uplink(struct net_buf *nb)
     {
         net_buf_unref(local_uplink_copy); // Free the previous copy
         local_uplink_copy = NULL;
-        net_buf_invoke_count -= 1;
+        if (net_buf_invoke_count > 0) {
+            net_buf_invoke_count -= 1;
+        }
         LOG_ERR("Lbm SMP uplink: freed previous copy, net_buf_invoke_count %d\n", net_buf_invoke_count);
     }
 
@@ -287,7 +291,9 @@ static int smp_lbm_uplink(struct net_buf *nb)
 	}
 #endif
 
-	smp_packet_free(nb);
+    if (nb != local_uplink_copy) {
+        smp_packet_free(nb);
+    }
 
 	return rc;
 }
