@@ -410,8 +410,8 @@ int main(void)
             smtc_modem_get_status( STACK_ID, &status_mask );
 
             // Hack(ish): needed to ensure Class A devices can be auto switched to Class C
-//            maybe_switch_to_class_C(STACK_ID);
-            maybe_switch_to_class_B(STACK_ID);
+            maybe_switch_to_class_C(STACK_ID);
+//            maybe_switch_to_class_B(STACK_ID);
 
             // Check if the device has already joined a network
             if ((status_mask & SMTC_MODEM_STATUS_JOINED) == SMTC_MODEM_STATUS_JOINED) {
@@ -525,8 +525,8 @@ static void modem_event_callback( void )
 
             // Hack(ish): needed to ensure Class A devices with the capabilities enabled
             // can be auto switched to Class C
-//            maybe_switch_to_class_C(stack_id);
-            maybe_switch_to_class_B(stack_id);
+            maybe_switch_to_class_C(stack_id);
+//            maybe_switch_to_class_B(stack_id);
 
             // Send first periodical uplink on port 101
             send_uplink_counter_on_port( 101 );
@@ -591,8 +591,8 @@ static void modem_event_callback( void )
             SMTC_HAL_TRACE_WARNING( "Event received: LORAWAN MAC TIME\n" );
             // Hack(ish): needed to ensure Class A devices with the capabilities enabled
             // can be auto switched to Class C
-//            maybe_switch_to_class_C(stack_id);
-            maybe_switch_to_class_B(stack_id);
+            maybe_switch_to_class_C(stack_id);
+//            maybe_switch_to_class_B(stack_id);
 
             // Send another periodical uplink on port 101
             send_uplink_counter_on_port( 101 );
