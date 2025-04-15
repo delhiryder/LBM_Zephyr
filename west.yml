@@ -10,8 +10,8 @@ manifest:
 
     - name: lora_basics_modem
       path: modules/lib/lora_basics_modem
-      url: https://github.com/lora-net/SWL2001
-      revision: v4.8.0
+      url: https://github.com/Zylum-Inc/SWL2001
+      revision: lbm_zephyr_fuota_metadata
 
   self:
     path: application
