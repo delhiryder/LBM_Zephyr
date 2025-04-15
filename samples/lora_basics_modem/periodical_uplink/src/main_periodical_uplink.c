@@ -605,6 +605,19 @@ static void modem_event_callback( void )
             if( status == true )
             {
                 SMTC_HAL_TRACE_INFO( "Event received: FUOTA SUCCESSFUL\n" );
+
+                // Get the FUOTA metadata from flash
+                smtc_modem_fuota_metadata_t metadata;
+                memset(&metadata, 0, sizeof(metadata));
+                get_fuota_metadata(&metadata);
+                
+                SMTC_HAL_TRACE_INFO("FUOTA metadata2 details:\n");
+                SMTC_HAL_TRACE_INFO("  Total bytes: %u\n", metadata.total_bytes);
+                SMTC_HAL_TRACE_INFO("  Fragment size: %u\n", metadata.fragment_size);
+                SMTC_HAL_TRACE_INFO("  Received Fragments: %u\n", metadata.received_fragments);
+                SMTC_HAL_TRACE_INFO("  Lost Fragments: %u\n", metadata.lost_fragments);
+                SMTC_HAL_TRACE_INFO("  Padding: %u\n", metadata.padding);
+
                 // Fetch the fuota metadata from FLASH
                 last_fuota_context_store_info_t info;
                 get_fuota_context_store_info(&info);
@@ -623,11 +636,17 @@ static void modem_event_callback( void )
                     break;
                 }
 
+                if (metadata.padding > 0 && metadata.padding < metadata.fragment_size) {
+                    SMTC_HAL_TRACE_INFO("Reducing total_size by FUOTA padding: %u\n", metadata.padding);
+                    total_size -= metadata.padding;
+                }
+
                 // Read the FUOTA payload from FLASH
                 memset(fuota_payload, 0, MAX_SMP_FUOTA_DATA_BLOCK_SIZE);
                 smtc_modem_hal_context_restore(CONTEXT_FUOTA, 0, fuota_payload, total_size);
 
-                // Clear the info object, so that it may be (re)used
+                // Clear the metadata and context info
+                clear_fuota_metadata();
                 clear_fuota_context_store_info();
 
                 // Send the payload (along with the SMP header) to the smp server

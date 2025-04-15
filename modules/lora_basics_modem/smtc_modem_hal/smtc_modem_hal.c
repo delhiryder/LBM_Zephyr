@@ -17,6 +17,7 @@
 #include <zephyr/drivers/flash.h>
 #include <zephyr/storage/flash_map.h>
 #include <zephyr/device.h>
+#include <smtc_modem_api.h>  // For smtc_modem_fuota_metadata_t type
 
 #include <lora_lbm_transceiver.h>
 
@@ -260,6 +261,7 @@ const struct flash_area *context_flash_area;
 #define ADDR_STORE_AND_FORWARD_CONTEXT_OFFSET 8192
 #define ADDR_FUOTA_METADATA_CONTEXT_OFFSET 12288
 #define ADDR_FUOTA_CONTEXT_OFFSET 16384
+#define ADDR_FUOTA_METADATA2_CONTEXT_OFFSET 28672  // Near end of storage partition (32768), aligned to 16 bytes
 
 static void flash_init(void)
 {
@@ -402,6 +404,14 @@ void smtc_modem_hal_context_store(const modem_context_type_t ctx_type, uint32_t 
         flash_area_erase(context_flash_area, ADDR_FUOTA_METADATA_CONTEXT_OFFSET, 4096);
         rc = flash_area_write(context_flash_area, ADDR_FUOTA_METADATA_CONTEXT_OFFSET, page_buffer, 4096);
 
+    } else if (real_offset >= ADDR_FUOTA_METADATA2_CONTEXT_OFFSET) {
+        LOG_INF("Writing FUOTA metadata2 at offset %u", real_offset);
+        
+        memset(page_buffer, 0, 4096);
+        memcpy(page_buffer, buffer, size);
+        
+        flash_area_erase(context_flash_area, ADDR_FUOTA_METADATA2_CONTEXT_OFFSET, 4096);
+        rc = flash_area_write(context_flash_area, ADDR_FUOTA_METADATA2_CONTEXT_OFFSET, page_buffer, 4096);
     } else {
 		// LOG_INF("%s: offset %d, real_offset=%d", __FUNCTION__, offset, real_offset);
 		memset(page_buffer, 0, real_size);
@@ -528,8 +538,44 @@ bool smtc_modem_hal_crashlog_get_status(void)
 	// return available;
 }
 
+void get_fuota_metadata(smtc_modem_fuota_metadata_t *metadata) {
+    // Round up to nearest multiple of 16
+    const size_t aligned_size = (sizeof(smtc_modem_fuota_metadata_t) + 15) & ~15;
+    uint8_t temp[aligned_size];
+    memset(temp, 0, aligned_size);
+    int rc;
 
+    rc = flash_area_read(context_flash_area, ADDR_FUOTA_METADATA2_CONTEXT_OFFSET, temp, aligned_size);
+    LOG_INF("read fuota metadata success: %d", rc);
 
+    memcpy(metadata, temp, sizeof(smtc_modem_fuota_metadata_t));
+}
+
+void clear_fuota_metadata(void) {
+    // Round up to nearest multiple of 16
+    const size_t aligned_size = (sizeof(smtc_modem_fuota_metadata_t) + 15) & ~15;
+    uint8_t temp[aligned_size];
+    memset(temp, 0, aligned_size);
+
+    flash_area_erase(context_flash_area, ADDR_FUOTA_METADATA2_CONTEXT_OFFSET, 4096);
+    int rc = flash_area_write(context_flash_area, ADDR_FUOTA_METADATA2_CONTEXT_OFFSET, temp, aligned_size);
+    LOG_INF("clear fuota metadata success: %d", rc);
+}
+
+void save_fuota_metadata(const smtc_modem_fuota_metadata_t* metadata) {
+    // Round up to nearest multiple of 16
+    const size_t aligned_size = (sizeof(smtc_modem_fuota_metadata_t) + 15) & ~15;
+    uint8_t temp[aligned_size];
+    memset(temp, 0, aligned_size);
+    
+    // Copy metadata to temp buffer
+    memcpy(temp, metadata, sizeof(smtc_modem_fuota_metadata_t));
+    
+    // Erase and write to flash at the metadata2 offset
+    flash_area_erase(context_flash_area, ADDR_FUOTA_METADATA2_CONTEXT_OFFSET, 4096);
+    int rc = flash_area_write(context_flash_area, ADDR_FUOTA_METADATA2_CONTEXT_OFFSET, temp, aligned_size);
+    LOG_INF("save fuota metadata success: %d", rc);
+}
 
 #endif /* CONFIG_LORA_BASICS_MODEM_USER_STORAGE_IMPL */
 
