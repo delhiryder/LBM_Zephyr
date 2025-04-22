@@ -41,6 +41,7 @@ static volatile bool confirmed_uplink_ack_received = false;
 static volatile bool fuota_successful = false;
 static volatile struct net_buf *local_uplink_copy = NULL;
 #define MAX_UPLINK_RETRY_COUNT 1
+#define MAX_SMP_UPLINK_PAYLOAD_SIZE 242 
 static volatile uint8_t retry_count = 0;
 static volatile uint16_t net_buf_invoke_count = 0;
 
@@ -63,6 +64,8 @@ static void smp_lbm_uplink_thread(void *p1, void *p2, void *p3)
 {
 	struct smp_lbm_uplink_message_t *msg;
 
+	LOG_MODULE_DECLARE(smp_lbm, 3);
+
 	while (1) {
 		msg = k_fifo_get(&smp_lbm_fifo, K_FOREVER);
 		uint16_t size = 0;
@@ -80,6 +83,14 @@ static void smp_lbm_uplink_thread(void *p1, void *p2, void *p3)
 
             smtc_modem_get_next_tx_max_payload( LBM_STACK_ID, &data_size );
 
+			LOG_ERR("pos: %d, data_size: %d, size: %d", pos, data_size, size);
+
+			if (data_size > MAX_SMP_UPLINK_PAYLOAD_SIZE) {
+				LOG_ERR("data_size: %d exceeds the maximum %d", data_size, MAX_SMP_UPLINK_PAYLOAD_SIZE);
+				data_size = MAX_SMP_UPLINK_PAYLOAD_SIZE;
+				LOG_ERR("data_size: %d, size: %d", data_size, size);
+			}
+
 			if (data_size > size) {
 				data_size = size;
 			}
@@ -95,6 +106,10 @@ static void smp_lbm_uplink_thread(void *p1, void *p2, void *p3)
 			while (tries > 0) {
 				int rc;
 
+				LOG_ERR("Sending uplink, pos: %d, data_size: %d, tries left: %d", pos, data_size, tries);
+
+				confirmed_uplink_ack_received = false;
+
 				rc = smtc_modem_request_uplink(LBM_STACK_ID, CONFIG_MCUMGR_TRANSPORT_LBM_FRAME_PORT,
 #if defined(CONFIG_MCUMGR_TRANSPORT_LBM_CONFIRMED_UPLINKS)
 						  true,
@@ -103,12 +118,29 @@ static void smp_lbm_uplink_thread(void *p1, void *p2, void *p3)
 #endif
 						  data, data_size
 						 );
-
-
-				if (rc != 0) {
+						 		 
+				if (rc != 0 ) {
 					--tries;
 				} else {
-					break;
+					int loop_count = 0;
+					LOG_ERR("Uplink sent successfully, waiting for ack");
+					while (!confirmed_uplink_ack_received) {
+						k_sleep(K_SECONDS(2));
+						loop_count++;
+						if (loop_count > 60) {
+							LOG_ERR("Uplink ack not received after 120 seconds, continuing");
+							break;
+						}
+					}
+
+					if (confirmed_uplink_ack_received) {
+						LOG_ERR("Uplink ack received");
+						break;
+					} else {
+						--tries;
+						LOG_ERR("Uplink ack not received, continuing: tries left: %d", tries);
+						continue;
+					}
 				}
 			}
 
